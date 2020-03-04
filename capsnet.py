@@ -33,8 +33,19 @@ def class_probs(_output):
     return p
 
 
+def caps_layer(_data, axis=-1):
+    norm = tf.reshape(safe_norm(_data, axis=-2, keepdims=True), shape=(-1, 10))
+    return norm
+
 def margin_loss(_y_true, _y_pred, m_plus=0.9, m_minus=0.1, lambda_=0.5):
-    return 0.0
+    y_pred_norm = tf.reshape(safe_norm(_y_pred, axis=-2, keepdims=True), shape=(-1, 10))
+
+    present_error = tf.reshape(tf.square(tf.maximum(0., 0.9 - y_pred_norm)), shape=(-1, 10))
+    absent_error = tf.reshape(tf.square(tf.maximum(0., y_pred_norm - 0.1)), shape=(-1, 10))
+
+    loss = tf.add(_y_true * present_error, 0.5 * (1.0 - _y_true) * absent_error)
+
+    return tf.reduce_mean(tf.reduce_sum(loss, axis=1))
 
 
 def reconstruction_loss(_y_true, _y_pred):
@@ -138,6 +149,11 @@ class DigitCaps(layers.Layer):
 
 if __name__ == '__main__':
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+    x_train = x_train / 255.0
+    x_test = x_test / 255.0
+
+
     x_train, x_test = x_train[..., np.newaxis], x_test[..., np.newaxis]
     NUM_CLASSES = 10
     y_train, y_test = utils.to_categorical(y_train, NUM_CLASSES), utils.to_categorical(y_test, NUM_CLASSES)
@@ -184,10 +200,11 @@ if __name__ == '__main__':
     # digit caps (routing based on agreement -> weighted prediction)
     l6 = DigitCaps(**digit_caps_spec)(l5)
 
-    # class label
-    l7 = layers.Lambda(class_probs)(l6)
+    l7 = layers.Lambda(caps_layer)(l6)
 
+    # class label
     model = models.Model(l1, l7)
-    model.compile(optimizer='adam', loss=losses.categorical_crossentropy, metrics=['accuracy'])
-    model.fit(x_train, y_train, batch_size=64, epochs=100)
+
+    model.compile(optimizer='adam', loss=margin_loss, metrics=['accuracy'])
+    model.fit(x_train, y_train, batch_size=64, epochs=2, validation_split=0.1)
     model.evaluate(x_test, y_test)
