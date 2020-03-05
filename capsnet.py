@@ -285,15 +285,22 @@ if __name__ == '__main__':
 
     # evaluation
     model.load_weights('best_weights.hdf5')
-    model.evaluate(x_test, [y_test, x_test])
+    '''model.evaluate(x_test, [y_test, x_test])'''
 
 
     def print_results():
-        [__pred_y, __pred_x] = model.predict(x_test[:100])
-        for i in range(len(__pred_y)):
-            plt.imshow(np.squeeze(__pred_x[i]))
-            plt.title(f'Class: {__pred_y[i]}')
-            plt.show()
+        indices = np.random.randint(0, len(x_test), 10)
+        _n, _x, _y = len(indices), x_test[indices], y_test[indices]
+        [_y_p, _x_p] = model.predict(_x)
+        fig, axs = plt.subplots(ncols=5, nrows=4)
+        for z in range(_n):
+            i = (z // 5) * 2
+            j = z % 5
+            axs[i, j].imshow(np.squeeze(_x_p[z]), cmap='gray', vmin=0.0, vmax=1.0)
+            axs[i, j].axis('off')
+            axs[i + 1, j].imshow(np.squeeze(_x[z]), cmap='gray', vmin=0.0, vmax=1.0)
+            axs[i + 1, j].axis('off')
+        fig.show()
 
 
     print_results()
