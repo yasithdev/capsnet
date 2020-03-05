@@ -279,13 +279,16 @@ if __name__ == '__main__':
     # checkpoint function to save best weights
     checkpoint = callbacks.ModelCheckpoint("best_weights.hdf5", save_best_only=True)
 
-    # training
-    if not os.path.exists('best_weights.hdf5'):
+    if os.path.exists('best_weights.hdf5'):
+        # load existing weights
+        model.load_weights('best_weights.hdf5')
+    else:
+        # training
         model.fit(x_train, [y_train, x_train], batch_size=50, epochs=5, validation_split=0.1, callbacks=[checkpoint])
-
-    # evaluation
-    model.load_weights('best_weights.hdf5')
-    '''model.evaluate(x_test, [y_test, x_test])'''
+        # load best weights
+        model.load_weights('best_weights.hdf5')
+        # evaluation
+        model.evaluate(x_test, [y_test, x_test])
 
 
     def print_results():
