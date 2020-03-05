@@ -23,34 +23,43 @@ def safe_l2_norm(_data, axis=-1, keepdims=False):
     return k.sqrt(squared_norm + k.epsilon())
 
 
-def margin_loss(_y_true, _y_pred, m_plus=0.9, m_minus=0.1, lambda_=0.5):
-    # (None, 1, 10, 16, 1)
-    y_pred_norm = safe_l2_norm(_y_pred, axis=-2, keepdims=True)
-    # (None, 1, 10, 1, 1)
-    present_error = tf.reshape(tf.square(tf.maximum(0., 0.9 - y_pred_norm)), shape=(-1, 10))
-    absent_error = tf.reshape(tf.square(tf.maximum(0., y_pred_norm - 0.1)), shape=(-1, 10))
-    loss = tf.add(_y_true * present_error, 0.5 * (1.0 - _y_true) * absent_error)
-    return tf.reduce_mean(tf.reduce_sum(loss, axis=1))
+def margin_loss(_y_true, _y_pred, _m_plus=0.9, _m_minus=0.1, _lambda=0.5):
+    """
+    Loss Function
+
+    :param _y_true: shape: (None, num_caps)
+    :param _y_pred: shape: (None, num_caps)
+    :param _m_plus: scalar
+    :param _m_minus: scalar
+    :param _lambda: scalar
+    :return: margin loss. shape: (None, )
+    """
+    present_error = tf.square(tf.maximum(0., _m_plus - _y_pred))
+    absent_error = tf.square(tf.maximum(0., _y_pred - _m_minus))
+    loss = tf.add(_y_true * present_error, _lambda * (1.0 - _y_true) * absent_error)
+    # (None, num_caps)
+    _margin_loss = tf.reduce_mean(tf.reduce_sum(loss, axis=1))
+    # (None, )
+    return _margin_loss
 
 
 def accuracy(_y_true, _y_pred):
-    # (None, 1, 10, 16, 1)
-    y_proba = safe_l2_norm(_y_pred, axis=-2)
-    # (None, 1, 10, 1)
-    y_proba_argmax = tf.argmax(y_proba, axis=-2)
-    # (None, 1, 1)
-    _y_pred = tf.squeeze(y_proba_argmax, axis=[-2, -1])
-    # (None,)
+    """
+
+    :param _y_true: shape: (None, num_caps)
+    :param _y_pred: shape: (None, num_caps)
+    :return:
+    """
+    _y_pred = tf.argmax(_y_pred, axis=-1)
     _y_true = tf.argmax(_y_true, axis=-1)
-    # (None,)
     correct = tf.equal(_y_true, _y_pred)
-    # (None,)
     return tf.reduce_mean(tf.cast(correct, tf.float32))
 
 
 class DigitCaps(layers.Layer):
 
-    def __init__(self, num_caps, dim_caps, routing_iter, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
+    def __init__(self, num_caps, dim_caps, routing_iter, trainable=True, name=None, dtype=None, dynamic=False,
+                 **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
         self.num_caps = num_caps
         self.dim_caps = dim_caps
@@ -62,7 +71,8 @@ class DigitCaps(layers.Layer):
     def build(self, input_shape):
         self.p_num_caps = input_shape[-2]
         self.p_dim_caps = input_shape[-1]
-        self.w = k.random_normal(shape=(1, self.p_num_caps, self.num_caps, self.dim_caps, self.p_dim_caps), mean=0.0, stddev=0.1, dtype=tf.float32)
+        self.w = k.random_normal(shape=(1, self.p_num_caps, self.num_caps, self.dim_caps, self.p_dim_caps), mean=0.0,
+                                 stddev=0.1, dtype=tf.float32)
         self.built = True
 
     @staticmethod
@@ -136,7 +146,10 @@ class DigitCaps(layers.Layer):
             '''shape: (batch_size, 1, num_caps, dim_caps, 1)'''
             return w_prediction
 
-        return dynamic_routing(routing_weights)
+        final_prediction = dynamic_routing(routing_weights)
+
+        # reshape to (None, num_caps, dim_caps)
+        return tf.reshape(final_prediction, shape=(-1, self.num_caps, self.dim_caps))
 
 
 if __name__ == '__main__':
@@ -191,9 +204,15 @@ if __name__ == '__main__':
     # digit caps (routing based on agreement -> weighted prediction)
     l6 = DigitCaps(**digit_caps_spec)(l5)
 
-    # class label
-    model = models.Model(l1, l6)
+    # predictions (None, dim_caps)
+    l7 = layers.Lambda(safe_l2_norm)(l6)
 
-    model.compile(optimizer='adam', loss=margin_loss, metrics=[accuracy])
+    # define the model
+    model = models.Model(inputs=l1, outputs=[l7], name='capsule_network')
+    model.compile(optimizer='adam', loss=[margin_loss], metrics=[accuracy])
+
+    # training
     model.fit(x_train, y_train, batch_size=50, epochs=2, validation_split=0.1)
+
+    # evaluation
     model.evaluate(x_test, y_test)
