@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as k
-from tensorflow.keras import layers, activations, models, losses, utils
+from tensorflow.keras import layers, activations, models, utils
 from tensorflow.keras.datasets import mnist
 
 # Set random seeds so that the same outputs are generated always
@@ -16,44 +16,34 @@ def squash(_data, axis=-1):
     return squash_factor * unit_vector
 
 
-def safe_norm(_data, axis=-1, keepdims=False):
+def safe_l2_norm(_data, axis=-1, keepdims=False):
     squared_norm = k.sum(k.square(_data), axis=axis, keepdims=keepdims)
     return k.sqrt(squared_norm + k.epsilon())
 
 
-def class_probs(_output):
-    # get L2 norm of output over the dim_caps axis
-    l2_norm = safe_norm(_output, axis=-2)
-    '''shape: (batch_size, 1, num_caps, 1)'''
-    # get the argmax of l2_norm over num_caps axis
-    # label = k.argmax(l2_representation, axis=2)
-    # '''shape: (batch_size, 1, 1)'''
-    p = tf.squeeze(l2_norm, axis=[1, 3])
-    '''shape: (batch_size, )'''
-    return p
-
-
-def caps_layer(_data, axis=-1):
-    norm = tf.reshape(safe_norm(_data, axis=-2, keepdims=True), shape=(-1, 10))
-    return norm
-
 def margin_loss(_y_true, _y_pred, m_plus=0.9, m_minus=0.1, lambda_=0.5):
-    y_pred_norm = tf.reshape(safe_norm(_y_pred, axis=-2, keepdims=True), shape=(-1, 10))
-
+    # (None, 1, 10, 16, 1)
+    y_pred_norm = safe_l2_norm(_y_pred, axis=-2, keepdims=True)
+    # (None, 1, 10, 1, 1)
     present_error = tf.reshape(tf.square(tf.maximum(0., 0.9 - y_pred_norm)), shape=(-1, 10))
     absent_error = tf.reshape(tf.square(tf.maximum(0., y_pred_norm - 0.1)), shape=(-1, 10))
-
     loss = tf.add(_y_true * present_error, 0.5 * (1.0 - _y_true) * absent_error)
-
     return tf.reduce_mean(tf.reduce_sum(loss, axis=1))
 
 
-def reconstruction_loss(_y_true, _y_pred):
-    return 0.0
-
-
-def capsnet_loss(_y_true, _y_pred):
-    return 0.0
+def accuracy(_y_true, _y_pred):
+    # (None, 1, 10, 16, 1)
+    y_proba = safe_l2_norm(_y_pred, axis=-2)
+    # (None, 1, 10, 1)
+    y_proba_argmax = tf.argmax(y_proba, axis=-2)
+    # (None, 1, 1)
+    _y_pred = tf.squeeze(y_proba_argmax, axis=[-2, -1])
+    # (None,)
+    _y_true = tf.argmax(_y_true, axis=-1)
+    # (None,)
+    correct = tf.equal(_y_true, _y_pred)
+    # (None,)
+    return tf.reduce_mean(tf.cast(correct, tf.float32))
 
 
 class DigitCaps(layers.Layer):
@@ -153,7 +143,6 @@ if __name__ == '__main__':
     x_train = x_train / 255.0
     x_test = x_test / 255.0
 
-
     x_train, x_test = x_train[..., np.newaxis], x_test[..., np.newaxis]
     NUM_CLASSES = 10
     y_train, y_test = utils.to_categorical(y_train, NUM_CLASSES), utils.to_categorical(y_test, NUM_CLASSES)
@@ -200,11 +189,9 @@ if __name__ == '__main__':
     # digit caps (routing based on agreement -> weighted prediction)
     l6 = DigitCaps(**digit_caps_spec)(l5)
 
-    l7 = layers.Lambda(caps_layer)(l6)
-
     # class label
-    model = models.Model(l1, l7)
+    model = models.Model(l1, l6)
 
-    model.compile(optimizer='adam', loss=margin_loss, metrics=['accuracy'])
-    model.fit(x_train, y_train, batch_size=64, epochs=2, validation_split=0.1)
+    model.compile(optimizer='adam', loss=margin_loss, metrics=[accuracy])
+    model.fit(x_train, y_train, batch_size=50, epochs=2, validation_split=0.1)
     model.evaluate(x_test, y_test)
