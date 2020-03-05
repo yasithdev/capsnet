@@ -3,7 +3,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as k
-from tensorflow.keras import layers, activations, models, utils
+from tensorflow.keras import layers, activations, models, utils, callbacks
 from tensorflow.keras.datasets import mnist
 
 # Set random seeds so that the same outputs are generated always
@@ -109,6 +109,17 @@ class DigitCaps(layers.Layer):
         self.p_num_caps = ...
         self.p_dim_caps = ...
         self.w = ...
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'num_caps': self.num_caps,
+            'dim_caps': self.dim_caps,
+            'routing_iter': self.routing_iter,
+            'p_num_caps': self.p_num_caps,
+            'p_dim_caps': self.p_dim_caps
+        })
+        return config
 
     def build(self, input_shape):
         self.p_num_caps = input_shape[-2]
@@ -261,10 +272,14 @@ if __name__ == '__main__':
 
     # define the model
     model = models.Model(inputs=l1, outputs=[l7, d4], name='capsule_network')
-    model.compile(optimizer='adam', loss=[margin_loss, reconstruction_loss], loss_weights=[1e1, 1e-2], metrics={'margin': accuracy})
+    model.compile(optimizer='adam', loss=[margin_loss, reconstruction_loss], loss_weights=[1e0, 5e-3], metrics={'margin': accuracy})
+
+    # checkpoint function to save best weights
+    checkpoint = callbacks.ModelCheckpoint("best_weights.hdf5", save_best_only=True)
 
     # training
-    model.fit(x_train, [y_train, x_train], batch_size=50, epochs=2, validation_split=0.1)
+    model.fit(x_train, [y_train, x_train], batch_size=50, epochs=5, validation_split=0.1, callbacks=[checkpoint])
 
     # evaluation
+    model.load_weights('best_weights.hdf5')
     model.evaluate(x_test, [y_test, x_test])
