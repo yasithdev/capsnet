@@ -1,7 +1,9 @@
 #!/usr/bin/env python
+import os
 
 import numpy as np
 import tensorflow as tf
+from matplotlib import pyplot as plt
 from tensorflow.keras import backend as k
 from tensorflow.keras import layers, activations, models, utils, callbacks
 from tensorflow.keras.datasets import mnist
@@ -278,8 +280,20 @@ if __name__ == '__main__':
     checkpoint = callbacks.ModelCheckpoint("best_weights.hdf5", save_best_only=True)
 
     # training
-    model.fit(x_train, [y_train, x_train], batch_size=50, epochs=5, validation_split=0.1, callbacks=[checkpoint])
+    if not os.path.exists('best_weights.hdf5'):
+        model.fit(x_train, [y_train, x_train], batch_size=50, epochs=5, validation_split=0.1, callbacks=[checkpoint])
 
     # evaluation
     model.load_weights('best_weights.hdf5')
     model.evaluate(x_test, [y_test, x_test])
+
+
+    def print_results():
+        [__pred_y, __pred_x] = model.predict(x_test[:100])
+        for i in range(len(__pred_y)):
+            plt.imshow(np.squeeze(__pred_x[i]))
+            plt.title(f'Class: {__pred_y[i]}')
+            plt.show()
+
+
+    print_results()
