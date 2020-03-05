@@ -23,6 +23,37 @@ def safe_l2_norm(_data, axis=-1, keepdims=False):
     return k.sqrt(squared_norm + k.epsilon())
 
 
+def mask(_data):
+    """
+    Mask data from all capsules except the most activated one, for each instance
+    :param _data: shape: (None, num_caps, dim_caps)
+    :return:
+    """
+    _norm = safe_l2_norm(_data)
+    # shape: (None, num_caps)
+    _y_pred = tf.argmax(_norm, axis=-1)
+    # shape: (None, )
+    _mask = tf.expand_dims(tf.one_hot(_y_pred, depth=digit_caps_spec['num_caps']), axis=-1)
+    # shape: (None, num_caps, 1)
+    _masked = tf.multiply(_data, _mask)
+    # shape: (None, num_caps, dim_caps)
+    return _masked
+
+
+def embed(_data):
+    """
+    Generate embedding vector for each instance, using the data from the most activated capsule, and the label
+    :param _data: shape: (None, num_caps, dim_caps)
+    """
+    _norm = safe_l2_norm(_data)
+    # shape: (None, num_caps)
+    _y_pred = tf.argmax(_norm, axis=-1)
+    # shape: (None, )
+    _representation = tf.gather(_data, _y_pred, axis=-2, batch_dims=1)
+    # shape: (None, dim_caps)
+    return _representation
+
+
 def margin_loss(_y_true, _y_pred, _m_plus=0.9, _m_minus=0.1, _lambda=0.5):
     """
     Loss Function
@@ -41,6 +72,17 @@ def margin_loss(_y_true, _y_pred, _m_plus=0.9, _m_minus=0.1, _lambda=0.5):
     _margin_loss = tf.reduce_mean(tf.reduce_sum(loss, axis=1))
     # (None, )
     return _margin_loss
+
+
+def reconstruction_loss(_y_true, _y_pred):
+    """
+    Calculate pixel-wise reconstruction loss
+    :param _y_true: shape: (None, 28, 28, 1)
+    :param _y_pred: shape: (None, 28, 28, 1)
+    :return:
+    """
+    units = np.prod(_input_shape)
+    return tf.reduce_mean(tf.square(tf.reshape(_y_true - _y_pred, shape=(-1, units))))
 
 
 def accuracy(_y_true, _y_pred):
@@ -205,14 +247,24 @@ if __name__ == '__main__':
     l6 = DigitCaps(**digit_caps_spec)(l5)
 
     # predictions (None, dim_caps)
-    l7 = layers.Lambda(safe_l2_norm)(l6)
+    l7 = layers.Lambda(safe_l2_norm, name='margin')(l6)
+
+    # masking layer
+    l8 = layers.Lambda(mask)(l6)
+
+    # decoder
+    d0 = layers.Flatten()(l8)
+    d1 = layers.Dense(512, activation='relu')(d0)
+    d2 = layers.Dense(1024, activation='relu')(d1)
+    d3 = layers.Dense(np.prod(_input_shape), activation='sigmoid')(d2)
+    d4 = layers.Reshape(_input_shape, name='reconstruction')(d3)
 
     # define the model
-    model = models.Model(inputs=l1, outputs=[l7], name='capsule_network')
-    model.compile(optimizer='adam', loss=[margin_loss], metrics=[accuracy])
+    model = models.Model(inputs=l1, outputs=[l7, d4], name='capsule_network')
+    model.compile(optimizer='adam', loss=[margin_loss, reconstruction_loss], loss_weights=[1e1, 1e-2], metrics={'margin': accuracy})
 
     # training
-    model.fit(x_train, y_train, batch_size=50, epochs=2, validation_split=0.1)
+    model.fit(x_train, [y_train, x_train], batch_size=50, epochs=2, validation_split=0.1)
 
     # evaluation
-    model.evaluate(x_test, y_test)
+    model.evaluate(x_test, [y_test, x_test])
