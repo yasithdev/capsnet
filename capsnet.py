@@ -63,22 +63,22 @@ class Metrics:
 
 
 class CapsConv2D(k.layers.Conv2D):
-    def __init__(self, filters, kernel_size, dim_caps, **kwargs):
-        assert filters > dim_caps and filters % dim_caps == 0
-        self.dim_caps = dim_caps
-        super().__init__(filters, kernel_size, **kwargs)
+    def __init__(self, caps_layers, caps_dims, kernel_size, **kwargs):
+        self.caps_layers = caps_layers
+        self.caps_dims = caps_dims
+        super().__init__(self.caps_layers * self.caps_dims, kernel_size, **kwargs)
 
     def call(self, inputs, **kwargs):
         result = super(CapsConv2D, self).call(inputs)
-        result = tf.reshape(result, shape=(-1, result.shape[1], result.shape[2], result.shape[3] // self.dim_caps, self.dim_caps))
+        result = tf.reshape(result, shape=(-1, result.shape[1], result.shape[2], result.shape[3] // self.caps_dims, self.caps_dims))
         return Activations.squash(result, axis=-1)
 
 
 class CapsDense(k.layers.Layer):
-    def __init__(self, num_caps, dim_caps, routing_iter, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
+    def __init__(self, caps, caps_dims, routing_iter, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
-        self.num_caps = num_caps
-        self.dim_caps = dim_caps
+        self.num_caps = caps
+        self.dim_caps = caps_dims
         self.routing_iter = routing_iter
         self.p_num_caps = ...
         self.p_dim_caps = ...
