@@ -42,11 +42,11 @@ def create_capsnet_model(input_shape, name) -> k.Model:
     # dense capsule layer with dynamic routing
     l4 = CapsDense(num_caps=10, dim_caps=16, routing_iter=3, name='dense_caps')(l3)  # type: tf.Tensor
     # decoder
-    d0 = k.layers.Lambda(max_mask)(l4)  # type: tf.Tensor
-    d1 = k.layers.Flatten()(d0)  # type: k.layers.Layer
-    d2 = k.layers.Dense(512, activation='relu')(d1)  # type: tf.Tensor
-    d3 = k.layers.Dense(1024, activation='relu')(d2)  # type: tf.Tensor
-    d4 = k.layers.Dense(tf.reduce_prod(input_shape), activation='sigmoid')(d3)  # type: tf.Tensor
+    d0 = k.layers.Lambda(max_mask, name="masking")(l4)  # type: tf.Tensor
+    d1 = k.layers.Flatten(name="flatten")(d0)  # type: k.layers.Layer
+    d2 = k.layers.Dense(512, activation='relu', name="decoder_l1")(d1)  # type: tf.Tensor
+    d3 = k.layers.Dense(1024, activation='relu', name="decoder_l2")(d2)  # type: tf.Tensor
+    d4 = k.layers.Dense(tf.reduce_prod(input_shape), activation='sigmoid', name="decoder_l3")(d3)  # type: tf.Tensor
     # output layers
     margin = k.layers.Lambda(safe_l2_norm, name='margin')(l4)  # type: tf.Tensor
     reconstruction = k.layers.Reshape(input_shape, name='reconstruction')(d4)  # type: tf.Tensor
