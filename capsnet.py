@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow import keras as k
+from tensorflow_core.python.keras.utils import conv_utils
 
 
 class Activations:
@@ -63,10 +64,10 @@ class Metrics:
 
 
 class CapsConv2D(k.layers.Conv2D):
-    def __init__(self, caps_layers, caps_dims, kernel_size, **kwargs):
-        self.caps_layers = caps_layers
+    def __init__(self, caps_filters, caps_dims, kernel_size, **kwargs):
+        self.caps_filters = caps_filters
         self.caps_dims = caps_dims
-        super().__init__(self.caps_layers * self.caps_dims, kernel_size, **kwargs)
+        super(CapsConv2D, self).__init__(self.caps_filters * self.caps_dims, kernel_size, **kwargs)
 
     def call(self, inputs, **kwargs):
         result = super(CapsConv2D, self).call(inputs)
@@ -74,112 +75,127 @@ class CapsConv2D(k.layers.Conv2D):
         return Activations.squash(result, axis=-1)
 
 
+class CapsConv(k.layers.Conv3D):
+    def __init__(self, caps_layers, caps_dims, routing_iter, kernel_size, strides, **kwargs):
+        self.caps_layers = caps_layers
+        self.caps_dims = caps_dims
+        self.routing_iter = routing_iter
+        self.w = ...
+        # only accept kernel_size and strides specified in 2D
+        kernel_size = conv_utils.normalize_tuple(kernel_size, 2, name='kernel_size')
+        strides = conv_utils.normalize_tuple(strides, 2, name='strides')
+        super(CapsConv, self).__init__(self.caps_layers * self.caps_dims, (*kernel_size, 1), strides=(*strides, 1), **kwargs)
+
+    def build(self, input_shape: tf.TensorShape):
+        assert input_shape.rank == 5
+        input_caps_dims = input_shape[4]
+        # configure kernel_size and stride for capsule-wise convolution in the last dimension
+        self.kernel_size = (*self.kernel_size[:-1], input_caps_dims)
+        self.strides = (*self.strides[:-1], input_caps_dims)
+        super(CapsConv, self).build(input_shape)
+
+    def call(self, inputs, **kwargs):
+        # reshape (..., caps_layers, caps_dims) for depth-wise convolution
+        new_shape = (*inputs.shape[:-2], inputs.shape[-2] * inputs.shape[-1], 1)
+        inputs = tf.reshape(inputs, shape=new_shape)  # shape: (batch_size, rows, cols, input_caps_layers * input_caps_dims, 1)
+        # perform 3D convolution
+        result = super(CapsConv, self).call(inputs)  # shape: (batch_size, new_rows, new_cols, input_caps_layers, caps_layers * caps_dims)
+        # transpose and reshape
+        result = tf.linalg.matrix_transpose(result)  # shape: (batch_size, new_rows, new_cols, caps_layers * caps_dims, input_caps_layers)
+        new_shape = (-1, result.shape[1], result.shape[2], result.shape[3] // self.caps_dims, self.caps_dims, result.shape[4])
+        result = tf.reshape(result, shape=new_shape)  # shape: (batch_size, new_rows, new_cols, caps_layers, caps_dims, input_caps_layers)
+        # dynamic routing
+        return Activations.squash(result, axis=-1)
+
+
 class CapsDense(k.layers.Layer):
     def __init__(self, caps, caps_dims, routing_iter, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
-        self.num_caps = caps
-        self.dim_caps = caps_dims
+        self.caps = caps
+        self.caps_dims = caps_dims
         self.routing_iter = routing_iter
-        self.p_num_caps = ...
-        self.p_dim_caps = ...
+        self.input_caps = ...
+        self.input_caps_dims = ...
         self.w = ...
 
     def get_config(self):
         config = super().get_config().copy()
         config.update({
-            'num_caps': self.num_caps,
-            'dim_caps': self.dim_caps,
+            'caps': self.caps,
+            'caps_dims': self.caps_dims,
             'routing_iter': self.routing_iter,
-            'p_num_caps': self.p_num_caps,
-            'p_dim_caps': self.p_dim_caps
+            'input_caps': self.input_caps,
+            'input_caps_dims': self.input_caps_dims
         })
         return config
 
     def build(self, input_shape: tf.TensorShape):
         assert input_shape.rank == 5
-        rows, cols, cap_layers = input_shape[1], input_shape[2], input_shape[3]
-        self.p_num_caps = rows * cols * cap_layers
-        self.p_dim_caps = input_shape[4]
+        self.input_caps = input_shape[1] * input_shape[2] * input_shape[3]
+        self.input_caps_dims = input_shape[4]
         self.w = self.add_weight(
             name='w',
-            shape=(1, self.p_num_caps, self.num_caps, self.dim_caps, self.p_dim_caps),
+            shape=(1, self.input_caps, self.caps, self.caps_dims, self.input_caps_dims),
             dtype=tf.float32,
             initializer='random_normal'
         )
         self.built = True
 
     @staticmethod
-    def apply_routing_weights(_weights, _prediction):
-        """
-        Weight the prediction by routing weights, squash it, and return it
-        :param _weights: (batch_size, p_num_caps, num_caps, 1, 1)
-        :param _prediction: (batch_size, p_num_caps, num_caps, dim_caps, 1)
-        :return:
-        """
-        # softmax of weights over num_caps axis
-        softmax_routing = tf.nn.softmax(_weights, axis=2)
-        '''shape: (batch_size, p_num_caps, num_caps, 1, 1)'''
+    @tf.function
+    def dynamic_routing(routing_iter, batch_size, input_caps, caps, prediction):
+        def routing_step(_routing_weights, _prediction):
+            """
+            Weight the prediction by routing weights, squash it, and return it
+            :param _routing_weights: (batch_size, p_num_caps, num_caps, 1, 1)
+            :param _prediction: (batch_size, p_num_caps, num_caps, dim_caps, 1)
+            :return:
+            """
+            # softmax of weights over num_caps axis
+            prob_w = tf.nn.softmax(_routing_weights, axis=2)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
+            # elementwise multiplication of weights with prediction
+            w_pred = tf.multiply(prob_w, _prediction)  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
+            # sum over p_num_caps axis
+            w_prediction_sum = tf.reduce_sum(w_pred, axis=1, keepdims=True)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+            # squash over dim_caps and return
+            return Activations.squash(w_prediction_sum, axis=-2)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
 
-        # elementwise multiplication of weights with prediction
-        w_prediction = tf.multiply(softmax_routing, _prediction)
-        '''shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)'''
-
-        # sum over p_num_caps axis
-        w_prediction_sum = tf.reduce_sum(w_prediction, axis=1, keepdims=True)
-        '''shape: (batch_size, 1, num_caps, dim_caps, 1)'''
-
-        squashed_w_prediction_sum = Activations.squash(w_prediction_sum, axis=-2)
-        '''shape: (batch_size, 1, num_caps, dim_caps, 1)'''
-
-        return squashed_w_prediction_sum
+        # initialize routing weights to zero
+        routing_weights = tf.zeros(shape=(batch_size, input_caps, caps, 1, 1), dtype=tf.float32)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
+        # initial routed prediction
+        routed_prediction = routing_step(routing_weights, prediction)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+        # update routing weights and routed prediction, for routing_iter iterations
+        for i in range(routing_iter):
+            # step 1: tile the weighted prediction for each previous capsule
+            tiled = tf.tile(routed_prediction, [1, input_caps, 1, 1, 1])  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
+            # step 2: find the agreement between prediction and weighted prediction
+            agreement = tf.matmul(prediction, tiled, transpose_a=True)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
+            # step 3: update routing weights based on agreement
+            routing_weights = tf.add(routing_weights, agreement)
+            # step 4: update routed prediction
+            routed_prediction = routing_step(routing_weights, prediction)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+        # return final routed prediction
+        return routed_prediction
 
     def call(self, inputs, **kwargs):
         # get batch size of input
         batch_size = tf.shape(inputs)[0]
         # reshape input
-        flattened = tf.reshape(inputs, (batch_size, self.p_num_caps, self.p_dim_caps))
-        batch_input = tf.expand_dims(flattened, axis=-1)
-        '''shape: (batch_size, p_num_caps, p_dim_caps, 1)'''
-        batch_input = tf.expand_dims(batch_input, axis=2)
-        '''shape: (batch_size, p_num_caps, 1, p_dim_caps, 1)'''
-        batch_input = tf.tile(batch_input, [1, 1, self.num_caps, 1, 1])
-        '''shape: (batch_size, p_num_caps, num_caps, p_dim_caps, 1)'''
-
+        inputs = tf.reshape(inputs, (batch_size, self.input_caps, self.input_caps_dims))  # shape: (batch_size, p_num_caps, p_dim_caps)
+        inputs = tf.expand_dims(inputs, axis=-1)  # shape: (batch_size, p_num_caps, p_dim_caps, 1)
+        inputs = tf.expand_dims(inputs, axis=2)  # shape: (batch_size, p_num_caps, 1, p_dim_caps, 1)
+        inputs = tf.tile(inputs, [1, 1, self.caps, 1, 1])  # shape: (batch_size, p_num_caps, num_caps, p_dim_caps, 1)
         # tile transformation matrix for each element in batch
-        batch_w = tf.tile(self.w, [batch_size, 1, 1, 1, 1])
-        '''shape: (batch_size, p_num_caps, num_caps, dim_caps, p_dim_caps)'''
-
-        # calculate prediction (dot product of batch_w and batch_input)
-        # this returns the matrix multiplication of last two dims, preserving previous dims
-        prediction = tf.matmul(batch_w, batch_input)
-        '''shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)'''
-
-        # ROUTING SECTION ----------
-        # initialize routing weights to zero
-        routing_weights = tf.zeros(shape=(batch_size, self.p_num_caps, self.num_caps, 1, 1), dtype=tf.float32)
-        '''shape: (batch_size, p_num_caps, num_caps, 1, 1)'''
-
-        @tf.function
-        def dynamic_routing(w_routing):
-            # update routing weights for routing_iter iterations
-            for i in range(self.routing_iter):
-                # step 1: getting weighted prediction
-                w_prediction = self.apply_routing_weights(w_routing, prediction)
-                '''shape: (batch_size, 1, num_caps, dim_caps, 1)'''
-                # step 2: tile the weighted prediction for each previous capsule
-                w_prediction_tiled = tf.tile(w_prediction, [1, self.p_num_caps, 1, 1, 1])
-                '''shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)'''
-                # step 3: find the agreement between prediction and weighted prediction
-                agreement = tf.matmul(prediction, w_prediction_tiled, transpose_a=True)
-                '''shape: (batch_size, p_num_caps, num_caps, 1, 1)'''
-                # update routing weights based on agreement
-                w_routing = tf.add(w_routing, agreement)
-            # return the final prediction after routing
-            w_prediction = self.apply_routing_weights(w_routing, prediction)
-            '''shape: (batch_size, 1, num_caps, dim_caps, 1)'''
-            return w_prediction
-
-        final_prediction = dynamic_routing(routing_weights)
-
-        # reshape to (None, num_caps, dim_caps)
-        return tf.reshape(final_prediction, shape=(-1, self.num_caps, self.dim_caps))
+        tiled_w = tf.tile(self.w, [batch_size, 1, 1, 1, 1])  # shape: (batch_size, p_num_caps, num_caps, dim_caps, p_dim_caps)
+        # calculate prediction (dot product of the last two dimensions of tiled_w and input)
+        prediction = tf.matmul(tiled_w, inputs)  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
+        # dynamic routing
+        routed_prediction = CapsDense.dynamic_routing(
+            routing_iter=self.routing_iter,
+            batch_size=batch_size,
+            input_caps=self.input_caps,
+            caps=self.caps,
+            prediction=prediction
+        )  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+        # reshape to (None, num_caps, dim_caps) and return
+        return tf.reshape(routed_prediction, shape=(-1, self.caps, self.caps_dims))
