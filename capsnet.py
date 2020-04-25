@@ -101,6 +101,7 @@ class CapsDense(k.layers.Layer):
         self.p_num_caps = rows * cols * cap_layers
         self.p_dim_caps = input_shape[4]
         self.w = self.add_weight(
+            name='w',
             shape=(1, self.p_num_caps, self.num_caps, self.dim_caps, self.p_dim_caps),
             dtype=tf.float32,
             initializer='random_normal'
