@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from tensorflow import keras as k
 from tensorflow.keras.datasets import mnist
 
-from capsnet import CapsConv2D, CapsDense, Losses, Metrics
+from capsnet import CapsConv2D, CapsDense, Losses, Metrics, CapsConv
 
 # Set random seeds so that the same outputs are generated always
 np.random.seed(42)
@@ -37,8 +37,10 @@ def create_capsnet_model(input_shape, name) -> k.Model:
     l1 = k.layers.Input(shape=input_shape, name='input')  # type: tf.Tensor
     # initial convolution
     l2 = k.layers.Conv2D(filters=256, kernel_size=(9, 9), strides=(1, 1), activation='relu', name='conv')(l1)  # type: tf.Tensor
-    # convolution capsule layer
-    l3 = CapsConv2D(caps_filters=32, caps_dims=8, kernel_size=(9, 9), strides=(2, 2), activation='relu', name='conv_caps')(l2)  # type: tf.Tensor
+    # layer to convert to capsule domain
+    l3 = CapsConv2D(caps_filters=32, caps_dims=8, kernel_size=(9, 9), strides=(2, 2), activation='relu', name='conv_caps_2d')(l2)  # type: tf.Tensor
+    # conv capsule layer with dynamic routing
+    l3 = CapsConv(caps_filters=32, caps_dims=8, kernel_size=(2, 2), strides=(1, 1), routing_iter=3, name='conv_caps_3d')(l3)  # type: tf.Tensor
     # dense capsule layer with dynamic routing
     l4 = CapsDense(caps=10, caps_dims=16, routing_iter=3, name='dense_caps')(l3)  # type: tf.Tensor
     # decoder
