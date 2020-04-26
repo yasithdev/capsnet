@@ -77,103 +77,97 @@ class Metrics:
         return tf.reduce_mean(tf.cast(correct, tf.float32))
 
 
-class CapsConv2D(k.layers.Conv2D):
-    def __init__(self, caps_filters, caps_dims, kernel_size, **kwargs):
-        self.caps_filters = caps_filters
-        self.caps_dims = caps_dims
-        super(CapsConv2D, self).__init__(self.caps_filters * self.caps_dims, kernel_size, **kwargs)
+class ConvCaps(k.layers.Conv2D):
+    def __init__(self, filters, filter_dims, kernel_size, **kwargs):
+        self.filters = filters
+        self.filter_dims = filter_dims
+        super(ConvCaps, self).__init__(self.filters * self.filter_dims, kernel_size, **kwargs)
 
     def call(self, inputs, **kwargs):
-        result = super(CapsConv2D, self).call(inputs)
-        result = tf.reshape(result, shape=(-1, *result.shape[1:3], result.shape[3] // self.caps_dims, self.caps_dims))
+        result = super(ConvCaps, self).call(inputs)
+        result = tf.reshape(result, shape=(-1, *result.shape[1:3], result.shape[3] // self.filter_dims, self.filter_dims))
         activation = NN.squash(result, axis=-1)
         return activation
 
 
-class CapsConv3D(k.layers.Conv3D):
-    def __init__(self, caps_filters, caps_dims, routing_iter, kernel_size, strides, **kwargs):
-        self.caps_filters = caps_filters
-        self.caps_dims = caps_dims
+class StackedConvCaps(k.layers.Conv3D):
+    def __init__(self, filters, filter_dims, routing_iter: int, kernel_size, strides, **kwargs):
+        self._filters = filters
+        self.filter_dims = filter_dims
         self.routing_iter = routing_iter
         # build-time parameters
-        self.input_caps_filters = ...
-        self.input_caps_dims = ...
-        self.conv_input_shape = ...
-        self.w = ...
+        self.input_filters = ...
+        self.input_filter_dims = ...
         # only accept kernel_size and strides specified in 2D
         kernel_size = conv_utils.normalize_tuple(kernel_size, 2, name='kernel_size')
         strides = conv_utils.normalize_tuple(strides, 2, name='strides')
         # call super init function
-        super(CapsConv3D, self).__init__(self.caps_filters * self.caps_dims, (*kernel_size, 1), strides=(*strides, 1), **kwargs)
+        super(StackedConvCaps, self).__init__(self._filters * self.filter_dims, (*kernel_size, 1), strides=(*strides, 1), **kwargs)
 
     def build(self, input_shape: tf.TensorShape):
         # sanity check
         tf.assert_equal(input_shape.rank, 5, message=f'Expected Tensor of Rank = 5, Got Rank = {input_shape.rank}')
         # define capsule parameters
-        self.input_caps_filters = input_shape[3]
-        self.input_caps_dims = input_shape[4]
+        self.input_filters = input_shape[3]
+        self.input_filter_dims = input_shape[4]
         # configure kernel_size and stride for capsule-wise convolution in the last dimension
-        self.kernel_size = (*self.kernel_size[:-1], self.input_caps_dims)
-        self.strides = (*self.strides[:-1], self.input_caps_dims)
+        self.kernel_size = (*self.kernel_size[:-1], self.input_filter_dims)
+        self.strides = (*self.strides[:-1], self.input_filter_dims)
         # call super build function. pass input shape for 3D convolution here
-        super(CapsConv3D, self).build((*input_shape[:3], self.input_caps_filters * self.input_caps_dims, 1))
+        super(StackedConvCaps, self).build((*input_shape[:3], self.input_filters * self.input_filter_dims, 1))
         # update input spec to match original rank
         self.input_spec = InputSpec(ndim=5)
 
     def call(self, inputs, **kwargs):
         # reshape (batch_size), (input_rows, input_cols, input_caps_filters, input_caps_dims) for capsule-wise convolution
-        new_shape = (-1, *inputs.shape[1:3], self.input_caps_filters * self.input_caps_dims, 1)
-        inputs = tf.reshape(inputs, shape=new_shape)  # shape: (batch_size), (input_rows, input_cols, input_caps_filters * input_caps_dims, 1)
+        s = (-1, *inputs.shape[1:3], self.input_filters * self.input_filter_dims, 1)
+        inputs = tf.reshape(inputs, shape=s)  # shape: (batch_size), (input_rows, input_cols, input_filters * input_filter_dims, 1)
         # perform 3D convolution
-        result = super(CapsConv3D, self).call(inputs)  # shape: (batch_size), (rows, cols, input_caps_filters, caps_filters * caps_dims)
-        # reshape into (batch_size), (rows, cols, input_caps_filters, caps_filters, caps_dims)
-        result = tf.reshape(result, shape=(-1, *result.shape[1:4], self.caps_filters, self.caps_dims))
-        # activation by dynamic routing
-        activation = CapsConv3D.dynamic_routing(
-            routing_iter=self.routing_iter,
-            caps_filters=self.caps_filters,
-            input_caps_filters=self.input_caps_filters,
-            prediction=result
-        )  # shape: (batch_size), (rows(p), cols(q), caps_filters(r), caps_dims(t))
+        result = super(StackedConvCaps, self).call(inputs)  # shape: (batch_size), (rows, cols, input_filters, filters * filter_dims)
+        # reshape into (batch_size), (rows, cols, input_filters, filters, filter_dims)
+        result = tf.reshape(result, shape=(-1, *result.shape[1:4], self._filters, self.filter_dims))
+        # TODO verify this transpose
+        # reorder into (batch_size), (rows, cols, filter_dims, filters, input_filters)
+        result = tf.transpose(result, [0, 1, 2, 5, 4, 3])
+        # activation by dynamic routing - shape: (batch_size), (rows(p), cols(q), filters(r), filter_dims(t))
+        activation = self.dynamic_routing(prediction=result)
         # return result
         return activation
 
-    @staticmethod
-    def dynamic_routing(routing_iter, caps_filters, input_caps_filters, prediction):
+    @tf.function
+    def dynamic_routing(self, prediction):
         """
         Dynamic routing
 
-        :param input_caps_filters:
-        :param caps_filters:
-        :param routing_iter: number of routing iterations, >=1
-        :param prediction: shape: (batch_size(b)), (rows(p), cols(q), input_caps_filters(s), caps_filters(r), caps_dims(t))
+        :param prediction: shape: (batch_size(b)), (rows(p), cols(q), filter_dims(t), filters(r), input_filters(s))
         :return:
         """
-        # sanity check
-        tf.assert_greater(routing_iter, 0, message='Dynamic Routing should have >= 1 iterations')
+        input_shape = tf.shape(prediction)
         # get batch size
-        batch_size = tf.shape(prediction)[0]
-        # define routing weight - shape: (batch_size(b)), (rows(p), cols(q), caps_filters(r), input_caps_filters(s))
-        logits = tf.zeros(shape=(batch_size, *prediction.shape[1:3], caps_filters, input_caps_filters))
+        batch_size = input_shape[0]
+        input_filters = input_shape[5]
+        filters = input_shape[4]
+        # define routing weight - shape: (batch_size(b)), (rows(p), cols(q), filters(r), input_filters(s))
+        logits = tf.zeros(shape=(batch_size, *prediction.shape[1:3], filters, input_filters))
         # placeholder for activation
         activation = ...
         # routing
-        for _ in range(routing_iter):
-            # calculate coupling coefficient - shape: (batch_size(b)), (rows(p), cols(q), caps_filters(r), input_caps_filters(s))
+        for _ in range(self.routing_iter):
+            # calculate coupling coefficient - shape: (batch_size(b)), (rows(p), cols(q), filters(r), input_filters(s))
             cc = NN.softmax(logits, axis=(1, 2, 3))
-            # calculate routed prediction - shape: (batch_size), (rows(p), cols(q), caps_filters(r), caps_dims(t))
-            routed_prediction = tf.einsum('bpqrs,bpqsrt->bpqrt', cc, prediction)
-            # squash over caps_dims - shape: (batch_size), (rows(p), cols(q), caps_filters(r), caps_dims(t))
-            activation = NN.squash(routed_prediction, axis=-1)
+            # calculate routed prediction - shape: (batch_size(b)), (rows(p), cols(q), filter_dims(t), filters(r))
+            routed_prediction = tf.einsum('bpqrs,bpqtrs->bpqtr', cc, prediction)  # TODO verify position of (t), and what happens to (r), (s)
+            # squash over caps_dims - shape: (batch_size(b)), (rows(p), cols(q), filter_dims(t), filters(r))
+            activation = NN.squash(routed_prediction, axis=-2)
             # calculate agreement between original prediction and routed prediction
-            agreement = tf.einsum('bpqrt,bpqsrt->bpqrs', activation, prediction)
+            agreement = tf.einsum('bpqtr,bpqtrs->bpqrs', activation, prediction)
             # update routing weight
             logits = logits + agreement
         # return routed activation
         return activation
 
 
-class CapsDense(k.layers.Layer):
+class DenseCaps(k.layers.Layer):
     def __init__(self, caps, caps_dims, routing_iter, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
         self.caps = caps
@@ -209,9 +203,8 @@ class CapsDense(k.layers.Layer):
         )
         self.built = True
 
-    @staticmethod
     @tf.function
-    def dynamic_routing(routing_iter, batch_size, input_caps, caps, prediction):
+    def dynamic_routing(self, prediction):
         def routing_step(logits, _prediction):
             """
             Weight the prediction by routing weights, squash it, and return it
@@ -228,12 +221,16 @@ class CapsDense(k.layers.Layer):
             # squash over dim_caps and return
             return NN.squash(w_prediction_sum, axis=-2)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
 
+        prediction_shape = tf.shape(prediction)
+        batch_size = prediction_shape[0]
+        input_caps = prediction_shape[1]
+        caps = prediction_shape[2]
         # initialize routing weights to zero
         routing_weights = tf.zeros(shape=(batch_size, input_caps, caps, 1, 1), dtype=tf.float32)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
         # initial routed prediction
         routed_prediction = routing_step(routing_weights, prediction)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
         # update routing weights and routed prediction, for routing_iter iterations
-        for i in range(routing_iter):
+        for i in range(self.routing_iter):
             # step 1: tile the weighted prediction for each previous capsule
             tiled = tf.tile(routed_prediction, [1, input_caps, 1, 1, 1])  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
             # step 2: find the agreement between prediction and weighted prediction
@@ -258,20 +255,14 @@ class CapsDense(k.layers.Layer):
         # calculate prediction (dot product of the last two dimensions of tiled_w and input)
         prediction = tf.matmul(tiled_w, inputs)  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
         # dynamic routing
-        routed_prediction = CapsDense.dynamic_routing(
-            routing_iter=self.routing_iter,
-            batch_size=batch_size,
-            input_caps=self.input_caps,
-            caps=self.caps,
-            prediction=prediction
-        )  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+        routed_prediction = self.dynamic_routing(prediction=prediction)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
         # reshape to (None, num_caps, dim_caps) and return
         return tf.reshape(routed_prediction, shape=(-1, self.caps, self.caps_dims))
 
 
-class CapsFlatten(k.layers.Layer):
+class FlattenCaps(k.layers.Layer):
     def __init__(self, caps, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
-        super(CapsFlatten, self).__init__(trainable, name, dtype, dynamic, **kwargs)
+        super(FlattenCaps, self).__init__(trainable, name, dtype, dynamic, **kwargs)
         self.caps = caps
         self.input_caps = ...
         self.input_caps_dims = ...
