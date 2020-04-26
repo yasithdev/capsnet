@@ -118,12 +118,12 @@ class StackedConvCaps(k.layers.Conv3D):
         # reshape into (b,p,q,s,r,n)
         result = tf.reshape(result, shape=(-1, *result.shape[1:4], self._filters, self.filter_dims))
         # reorder into (b,p,q,n,r,s)
-        result = tf.transpose(result, [0, 1, 2, 5, 4, 3])
+        result = tf.transpose(result, perm=(0, 1, 2, 5, 4, 3))
         # return NN.squash(tf.linalg.matrix_transpose(tf.reduce_sum(result, axis=-1)), axis=-1) # TEMP hack to test without dynamic routing
         # get activation by dynamic routing
         activation = self.dynamic_routing(pre_activation=result)  # shape: (b,p,q,n,r,1)
         # return activation in (b,p,q,r,n,1) form
-        return tf.reshape(tf.transpose(activation, [0, 1, 2, 4, 3, 5]), shape=[*activation.shape[:-1]])
+        return tf.reshape(tf.transpose(activation, perm=(0, 1, 2, 4, 3, 5)), shape=(-1, *activation.shape[1:-1]))
 
     @tf.function
     def dynamic_routing(self, pre_activation):
@@ -142,9 +142,11 @@ class StackedConvCaps(k.layers.Conv3D):
         :return: activation (b,p,q,n,r,1)
         """
 
+        @tf.function
         def softmax(_logits, axis):
             return tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis, keepdims=True)
 
+        @tf.function
         def routing_step(_logits, _pre_activation):
             # softmax of logits over 3D space (such that their sum is 1)
             _prob = softmax(_logits, axis=(1, 2, 4))  # shape: (b,p,q,1,r,s)
@@ -154,7 +156,8 @@ class StackedConvCaps(k.layers.Conv3D):
             return NN.squash(_activation, axis=-3)  # shape: (b,p,q,n,r,1)
 
         # define dimensions
-        [b, p, q, _, r, s] = (tf.shape(pre_activation)[i] for i in range(6))
+        b = tf.shape(pre_activation)[0]
+        [p, q, _, r, s] = pre_activation.shape[1:]
         # define routing weight
         logits = tf.zeros(shape=(b, p, q, 1, r, s), dtype=tf.float32)  # shape: (b,p,q,1,r,s)
         # update logits at each routing iteration
@@ -162,7 +165,7 @@ class StackedConvCaps(k.layers.Conv3D):
             # step 1: find the activation from logits
             activation = routing_step(logits, pre_activation)  # shape: (b,p,q,n,r,1)
             # step 2: find the agreement (dot product) between pre_activation (b,p,q,n,r,s) and activation (b,p,q,n,r,1), across dim_caps
-            agreement = tf.reduce_sum(pre_activation * activation, axis=-3)  # shape: (b,p,q,1,r,s)
+            agreement = tf.reduce_sum(pre_activation * activation, axis=-3, keepdims=True)  # shape: (b,p,q,1,r,s)
             # update routing weight
             logits = logits + agreement
         # return activation from the updated logits
@@ -229,6 +232,7 @@ class DenseCaps(k.layers.Layer):
         :return:
         """
 
+        @tf.function
         def routing_step(_logits, _pre_activation):
             """
             Weight the prediction by routing weights, squash it, and return it
@@ -254,7 +258,7 @@ class DenseCaps(k.layers.Layer):
             # step 1: find the activation from logits
             activation = routing_step(logits, pre_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
             # step 2: find the agreement (dot product) between pre_activation and activation, across dim_caps
-            agreement = tf.reduce_sum(pre_activation * activation, axis=-2)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
+            agreement = tf.reduce_sum(pre_activation * activation, axis=-2, keepdims=True)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
             # step 3: update routing weights based on agreement
             logits = logits + agreement
         # return activation from the updated logits

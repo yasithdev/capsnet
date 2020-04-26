@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from tensorflow import keras as k
 from tensorflow.keras.datasets import mnist
 
-from capsnet import ConvCaps, Losses, Metrics, NN, DenseCaps, StackedConvCaps, FlattenCaps
+from capsnet import Losses, Metrics, NN, DenseCaps, StackedConvCaps, ConvCaps
 
 # Set random seeds so that the same outputs are generated always
 np.random.seed(42)
@@ -67,13 +67,13 @@ def create_capsnet_model(input_shape, name) -> k.Model:
     # input layer
     il = k.layers.Input(shape=input_shape, name='input')
     # encoder
-    # hl = k.layers.Conv2D(filters=256, kernel_size=(6, 6), strides=(1, 1), activation='relu')(il)
-    hl = ConvCaps(filters=32, filter_dims=8, kernel_size=(6, 6), strides=(2, 2), name='caps_conv_2d')(il)
-    hl = StackedConvCaps(filters=32, filter_dims=16, kernel_size=(3, 3), strides=(2, 2), routing_iter=3, name='caps_conv_3d_1')(hl)
+    # hl = k.layers.Conv2D(filters=256, kernel_size=(9, 9), strides=(1, 1), activation='relu', name='conv')(il)
+    hl = ConvCaps(filters=32, filter_dims=8, kernel_size=(9, 9), strides=(1, 1), name='conv_caps')(il)
+    hl = StackedConvCaps(filters=32, filter_dims=8, routing_iter=3, kernel_size=(9, 9), strides=(2, 2), name='caps_conv')(hl)
     # hl = StackedConvCaps(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(1, 1), routing_iter=1, name='caps_conv_3d_2')(hl)
     # hl = StackedConvCaps(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(1, 1), routing_iter=3, name='caps_conv_3d_3')(hl)
-    # hl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='prediction')(hl)
-    hl = FlattenCaps(caps=10, name='prediction')(hl)
+    hl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='prediction')(hl)
+    # hl = FlattenCaps(caps=10, name='prediction')(hl)
     # decoder
     decoder = fc_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="fc_decoder")(hl)
     # decoder = conv_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="conv_decoder")(hl)
