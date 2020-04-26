@@ -142,7 +142,8 @@ class StackedConvCaps(k.layers.Conv3D):
         :return: routed prediction (b,p,q,r,n)
         """
         # define dimensions
-        [b, p, q, n, r, s] = (tf.shape(prediction)[n] for n in range(6))
+        b = -1
+        [p, q, n, r, s] = (tf.shape(prediction)[n] for n in range(1, 6))
         # define routing weight
         logits = tf.zeros(shape=(b, p, q, r, s))  # shape: (b,p,q,r,s)
         # placeholder for activation
@@ -150,7 +151,7 @@ class StackedConvCaps(k.layers.Conv3D):
         # routing
         for _ in range(self.routing_iter):
             # calculate coupling coefficient
-            cc = tf.reshape(tf.nn.softmax(tf.reshape(logits, shape=(b, p, q, r, s), axis=1), shape=logits.shape))  # shape: (b,p,q,r,s)
+            cc = tf.reshape(tf.nn.softmax(tf.reshape(logits, shape=(b, p, q, r, s)), axis=1), shape=logits.shape)  # shape: (b,p,q,r,s)
             # calculate routed prediction (b,p,q,r,n)
             # -- tile cc over filter_dims
             tiled_cc = tf.tile(tf.expand_dims(cc, axis=3), [1, 1, 1, n, 1, 1])  # shape: (b,p,q,n,r,s)
