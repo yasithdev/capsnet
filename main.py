@@ -7,53 +7,81 @@ from matplotlib import pyplot as plt
 from tensorflow import keras as k
 from tensorflow.keras.datasets import mnist
 
-from capsnet import CapsConv2D, CapsDense, Losses, Metrics, CapsConv
+from capsnet import CapsConv2D, CapsFlatten, Losses, Metrics, CapsConv3D, NN
 
 # Set random seeds so that the same outputs are generated always
 np.random.seed(42)
 tf.random.set_seed(42)
 
 
-def safe_l2_norm(_data, axis=-1, keepdims=False):
-    squared_norm = tf.reduce_sum(tf.square(_data), axis=axis, keepdims=keepdims)
-    return tf.sqrt(squared_norm + k.backend.epsilon())
-
-
-def max_mask(_data):
+def max_mask(inputs):
     """
     Mask data from all capsules except the most activated one, for each instance
-    :param _data: shape: (None, num_caps, dim_caps)
+    :param inputs: shape: (None, num_caps, dim_caps)
     :return:
     """
-    _norm = safe_l2_norm(_data, axis=-1)  # shape: (None, num_caps)
-    _y_pred = tf.argmax(_norm, axis=-1)  # shape: (None, )
-    _mask = tf.expand_dims(tf.one_hot(_y_pred, depth=_norm.shape[-1]), axis=-1)  # shape: (None, num_caps, 1)
-    _masked = tf.multiply(_data, _mask)  # shape: (None, num_caps, dim_caps)
-    return _masked
+    norm = NN.norm(inputs, axis=-1)  # shape: (None, num_caps)
+    argmax = tf.argmax(norm, axis=-1)  # shape: (None, )
+    mask = tf.expand_dims(tf.one_hot(argmax, depth=norm.shape[-1]), axis=-1)  # shape: (None, num_caps, 1)
+    masked_input = tf.multiply(inputs, mask)  # shape: (None, num_caps, dim_caps)
+    return masked_input
+
+
+def mask_cid(inputs):
+    """
+    Select most activated capsule from each instance and return it
+    :param inputs: shape: (None, num_caps, dim_caps)
+    :return:
+    """
+    norm = NN.norm(inputs, axis=-1)  # shape: (None, num_caps)
+    # build index of elements to collect
+    i = tf.range(start=0, limit=tf.shape(inputs)[0], delta=1)  # shape: (None, )
+    j = tf.argmax(norm, axis=-1)  # shape: (None, )
+    ij = tf.stack([i, tf.cast(j, tf.int32)], axis=1)
+    # gather from index and return
+    return tf.gather_nd(inputs, ij)
+
+
+def fc_decoder(input_shape, target_shape, name):
+    il = k.layers.Input(shape=input_shape, name='input')
+    hl = k.layers.Lambda(max_mask, name="masking")(il)
+    hl = k.layers.Flatten(name="flatten")(hl)
+    hl = k.layers.Dense(512, activation='relu', name="decoder_l1")(hl)
+    hl = k.layers.Dense(1024, activation='relu', name="decoder_l2")(hl)
+    ol = k.layers.Dense(tf.reduce_prod(target_shape), activation='sigmoid', name="decoder_l3")(hl)
+    return k.models.Model(inputs=il, outputs=ol, name=name)
+
+
+def conv_decoder(input_shape, target_shape, name):
+    il = k.layers.Input(shape=input_shape, name='input')
+    dl = k.layers.Lambda(mask_cid)(il)
+    dl = k.layers.Dense(11 * 11 * 256)(dl)
+    dl = k.layers.Reshape((11, 11, 256))(dl)
+    dl = k.layers.BatchNormalization(momentum=0.8)(dl)
+    dl = k.layers.Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), activation='relu')(dl)
+    ol = k.layers.Conv2DTranspose(filters=1, kernel_size=(3, 3), strides=(2, 2), output_padding=(1, 1), activation='relu')(dl)
+    return k.models.Model(inputs=il, outputs=ol, name=name)
 
 
 def create_capsnet_model(input_shape, name) -> k.Model:
-    # input
-    l1 = k.layers.Input(shape=input_shape, name='input')  # type: tf.Tensor
-    # initial convolution
-    l2 = k.layers.Conv2D(filters=256, kernel_size=(9, 9), strides=(1, 1), activation='relu', name='conv')(l1)  # type: tf.Tensor
-    # layer to convert to capsule domain
-    l3 = CapsConv2D(caps_filters=32, caps_dims=8, kernel_size=(9, 9), strides=(2, 2), activation='relu', name='conv_caps_2d')(l2)  # type: tf.Tensor
-    # conv capsule layer with dynamic routing
-    l3 = CapsConv(caps_filters=32, caps_dims=8, kernel_size=(2, 2), strides=(1, 1), routing_iter=3, name='conv_caps_3d')(l3)  # type: tf.Tensor
-    # dense capsule layer with dynamic routing
-    l4 = CapsDense(caps=10, caps_dims=16, routing_iter=3, name='dense_caps')(l3)  # type: tf.Tensor
+    # input layer
+    il = k.layers.Input(shape=input_shape, name='input')
+    # encoder
+    hl = CapsConv2D(caps_filters=8, caps_dims=8, kernel_size=(3, 3), strides=(1, 1), name='caps_conv_2d')(il)
+    hl = CapsConv3D(caps_filters=16, caps_dims=8, kernel_size=(3, 3), strides=(1, 1), routing_iter=1, name='caps_conv_3d_1')(hl)
+    hl = CapsConv3D(caps_filters=32, caps_dims=16, kernel_size=(3, 3), strides=(1, 1), routing_iter=1, name='caps_conv_3d_2')(hl)
+    hl = CapsConv3D(caps_filters=64, caps_dims=16, kernel_size=(3, 3), strides=(1, 1), routing_iter=3, name='caps_conv_3d_3')(hl)
+    # hl = CapsDense(caps=10, caps_dims=16, routing_iter=3, name='caps_dense')(hl)
+    hl = CapsFlatten(caps=10, name='caps_flatten')(hl)
     # decoder
-    d0 = k.layers.Lambda(max_mask, name="masking")(l4)  # type: tf.Tensor
-    d1 = k.layers.Flatten(name="flatten")(d0)  # type: k.layers.Layer
-    d2 = k.layers.Dense(512, activation='relu', name="decoder_l1")(d1)  # type: tf.Tensor
-    d3 = k.layers.Dense(1024, activation='relu', name="decoder_l2")(d2)  # type: tf.Tensor
-    d4 = k.layers.Dense(tf.reduce_prod(input_shape), activation='sigmoid', name="decoder_l3")(d3)  # type: tf.Tensor
+    # decoder = fc_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="fc_decoder")(hl)
+    decoder = conv_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="conv_decoder")(hl)
+
     # output layers
-    margin = k.layers.Lambda(safe_l2_norm, name='margin')(l4)  # type: tf.Tensor
-    reconstruction = k.layers.Reshape(input_shape, name='reconstruction')(d4)  # type: tf.Tensor
+    margin = k.layers.Lambda(NN.norm, name='margin')(hl)
+    reconstruction = k.layers.Reshape(input_shape, name='reconstruction')(decoder)
     # define the model
-    return k.models.Model(inputs=l1, outputs=[margin, reconstruction], name=name)
+    return k.models.Model(inputs=il, outputs=[margin, reconstruction], name=name)
 
 
 if __name__ == '__main__':
@@ -70,7 +98,7 @@ if __name__ == '__main__':
     model = create_capsnet_model(input_shape=x_train.shape[1:], name='mnist_capsnet')
     model.compile(optimizer='adam', loss=[Losses.margin_loss, Losses.reconstruction_loss], loss_weights=[1e0, 5e-3],
                   metrics={'margin': Metrics.accuracy})
-    model.summary()
+    model.summary(line_length=120)
 
     # checkpoint function to save best weights
     checkpoint = k.callbacks.ModelCheckpoint("best_weights.hdf5", save_best_only=True)
