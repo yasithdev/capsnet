@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from tensorflow import keras as k
 from tensorflow.keras.datasets import mnist
 
-from capsnet import ConvCaps, Losses, Metrics, NN, DenseCaps, StackedConvCaps
+from capsnet import ConvCaps, Losses, Metrics, NN, DenseCaps, StackedConvCaps, FlattenCaps
 
 # Set random seeds so that the same outputs are generated always
 np.random.seed(42)
@@ -67,13 +67,13 @@ def create_capsnet_model(input_shape, name) -> k.Model:
     # input layer
     il = k.layers.Input(shape=input_shape, name='input')
     # encoder
-    hl = k.layers.Conv2D(filters=256, kernel_size=(6, 6), strides=(1, 1), activation='relu')(il)
-    hl = ConvCaps(filters=32, filter_dims=8, kernel_size=(6, 6), strides=(2, 2), name='caps_conv_2d')(hl)
-    hl = StackedConvCaps(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), routing_iter=3, name='caps_conv_3d_1')(hl)
+    # hl = k.layers.Conv2D(filters=256, kernel_size=(6, 6), strides=(1, 1), activation='relu')(il)
+    hl = ConvCaps(filters=32, filter_dims=8, kernel_size=(6, 6), strides=(2, 2), name='caps_conv_2d')(il)
+    hl = StackedConvCaps(filters=32, filter_dims=16, kernel_size=(3, 3), strides=(2, 2), routing_iter=3, name='caps_conv_3d_1')(hl)
     # hl = StackedConvCaps(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(1, 1), routing_iter=1, name='caps_conv_3d_2')(hl)
     # hl = StackedConvCaps(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(1, 1), routing_iter=3, name='caps_conv_3d_3')(hl)
-    hl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='prediction')(hl)
-    # hl = FlattenCaps(caps=10, name='prediction')(hl)
+    # hl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='prediction')(hl)
+    hl = FlattenCaps(caps=10, name='prediction')(hl)
     # decoder
     decoder = fc_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="fc_decoder")(hl)
     # decoder = conv_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="conv_decoder")(hl)
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     y_train, y_test = k.utils.to_categorical(y_train, NUM_CLASSES), k.utils.to_categorical(y_test, NUM_CLASSES)
 
     model = create_capsnet_model(input_shape=x_train.shape[1:], name='mnist_capsnet')
-    model.compile(optimizer='adam', loss=[Losses.margin_loss, Losses.reconstruction_loss], loss_weights=[1e0, 5e-3],
+    model.compile(optimizer='adam', loss=[Losses.margin_loss, Losses.reconstruction_loss], loss_weights=[1, 0],
                   metrics={'margin': Metrics.accuracy})
     model.summary(line_length=120)
 
