@@ -22,15 +22,6 @@ class NN:
         squared_norm = tf.reduce_sum(tf.square(data), axis=axis, keepdims=True)
         return (squared_norm / (1 + squared_norm)) * (data / tf.sqrt(squared_norm + e))
 
-    @staticmethod
-    def softmax(logits: tf.Tensor, axis) -> tf.Tensor:
-        """
-        softmax over multiple dimensions
-        :param axis: axis/axes over which to normalize
-        :param logits: logits tensor
-        """
-        return tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis=axis, keepdims=True)
-
 
 class Losses:
     @staticmethod
@@ -129,7 +120,7 @@ class StackedConvCaps(k.layers.Conv3D):
         # TODO verify this transpose
         # reorder into (batch_size), (rows, cols, filter_dims, filters, input_filters)
         result = tf.transpose(result, [0, 1, 2, 5, 4, 3])
-        # activation by dynamic routing - shape: (batch_size), (rows(p), cols(q), filters(r), filter_dims(t))
+        # activation by dynamic routing - shape: (batch_size), (rows(p), cols(q), filters(r), filter_dims(n))
         activation = self.dynamic_routing(prediction=result)
         # return result
         return activation
@@ -137,33 +128,40 @@ class StackedConvCaps(k.layers.Conv3D):
     @tf.function
     def dynamic_routing(self, prediction):
         """
-        Dynamic routing
+        Dynamic routing in 3D Convolution.
 
-        :param prediction: shape: (batch_size(b)), (rows(p), cols(q), filter_dims(t), filters(r), input_filters(s))
-        :return:
+        Terminology Used:
+        batch_size     (b),
+        rows            (p),
+        cols            (q),
+        filter_dims     (n),
+        filters         (r),
+        input_filters   (s),
+
+        :param prediction (b,p,q,n,r,s)
+        :return: routed prediction (b,p,q,r,n)
         """
-        input_shape = tf.shape(prediction)
-        # get batch size
-        batch_size = input_shape[0]
-        input_filters = input_shape[5]
-        filters = input_shape[4]
-        # define routing weight - shape: (batch_size(b)), (rows(p), cols(q), filters(r), input_filters(s))
-        logits = tf.zeros(shape=(batch_size, *prediction.shape[1:3], filters, input_filters))
+        # define dimensions
+        [b, p, q, n, r, s] = (tf.shape(prediction)[n] for n in range(6))
+        # define routing weight
+        logits = tf.zeros(shape=(b, p, q, r, s))  # shape: (b,p,q,r,s)
         # placeholder for activation
         activation = ...
         # routing
         for _ in range(self.routing_iter):
-            # calculate coupling coefficient - shape: (batch_size(b)), (rows(p), cols(q), filters(r), input_filters(s))
-            cc = NN.softmax(logits, axis=(1, 2, 3))
-            # calculate routed prediction - shape: (batch_size(b)), (rows(p), cols(q), filter_dims(t), filters(r))
-            routed_prediction = tf.einsum('bpqrs,bpqtrs->bpqtr', cc, prediction)  # TODO verify position of (t), and what happens to (r), (s)
-            # squash over caps_dims - shape: (batch_size(b)), (rows(p), cols(q), filter_dims(t), filters(r))
-            activation = NN.squash(routed_prediction, axis=-2)
-            # calculate agreement between original prediction and routed prediction
-            agreement = tf.einsum('bpqtr,bpqtrs->bpqrs', activation, prediction)
+            # calculate coupling coefficient
+            cc = tf.reshape(tf.nn.softmax(tf.reshape(logits, shape=(b, p, q, r, s), axis=1), shape=logits.shape))  # shape: (b,p,q,r,s)
+            # calculate routed prediction (b,p,q,r,n)
+            # -- tile cc over filter_dims
+            tiled_cc = tf.tile(tf.expand_dims(cc, axis=3), [1, 1, 1, n, 1, 1])  # shape: (b,p,q,n,r,s)
+            # -- calculate routed prediction
+            routed_prediction = tf.reduce_sum(tiled_cc * prediction, axis=-1)  # shape: (b,p,q,n,r)
+            activation = NN.squash(routed_prediction, axis=-1)  # shape: (b,p,q,n,r)
+            # calculate agreement between prediction (b,p,q,n,r,s) and activation (b,p,q,n,r) -> (b,p,q,r,s)
+            agreement = tf.reduce_sum(prediction * tf.tile(tf.expand_dims(activation, axis=-1), [1, 1, 1, 1, 1, s]), axis=3)
             # update routing weight
             logits = logits + agreement
-        # return routed activation
+            # return routed activation
         return activation
 
 
@@ -205,6 +203,13 @@ class DenseCaps(k.layers.Layer):
 
     @tf.function
     def dynamic_routing(self, prediction):
+        """
+        Dynamic Routing as proposed in the original paper
+
+        :param prediction:
+        :return:
+        """
+
         def routing_step(logits, _prediction):
             """
             Weight the prediction by routing weights, squash it, and return it
@@ -213,7 +218,7 @@ class DenseCaps(k.layers.Layer):
             :return:
             """
             # softmax of weights over num_caps axis
-            prob_w = NN.softmax(logits, axis=2)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
+            prob_w = tf.nn.softmax(logits, axis=2)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
             # elementwise multiplication of weights with prediction
             w_pred = tf.multiply(prob_w, _prediction)  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
             # sum over p_num_caps axis
@@ -246,18 +251,16 @@ class DenseCaps(k.layers.Layer):
         # get batch size of input
         batch_size = tf.shape(inputs)[0]
         # reshape input
-        inputs = tf.reshape(inputs, (batch_size, self.input_caps, self.input_caps_dims))  # shape: (batch_size, p_num_caps, p_dim_caps)
-        inputs = tf.expand_dims(inputs, axis=-1)  # shape: (batch_size, p_num_caps, p_dim_caps, 1)
-        inputs = tf.expand_dims(inputs, axis=2)  # shape: (batch_size, p_num_caps, 1, p_dim_caps, 1)
+        inputs = tf.reshape(inputs, (batch_size, self.input_caps, 1, self.input_caps_dims, 1))  # shape: (batch_size, p_num_caps, 1. p_dim_caps, 1)
         inputs = tf.tile(inputs, [1, 1, self.caps, 1, 1])  # shape: (batch_size, p_num_caps, num_caps, p_dim_caps, 1)
         # tile transformation matrix for each element in batch
-        tiled_w = tf.tile(self.w, [batch_size, 1, 1, 1, 1])  # shape: (batch_size, p_num_caps, num_caps, dim_caps, p_dim_caps)
+        w = tf.tile(self.w, [batch_size, 1, 1, 1, 1])  # shape: (batch_size, p_num_caps, num_caps, dim_caps, p_dim_caps)
         # calculate prediction (dot product of the last two dimensions of tiled_w and input)
-        prediction = tf.matmul(tiled_w, inputs)  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
+        prediction = tf.matmul(w, inputs)  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
         # dynamic routing
-        routed_prediction = self.dynamic_routing(prediction=prediction)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+        activation = self.dynamic_routing(prediction=prediction)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
         # reshape to (None, num_caps, dim_caps) and return
-        return tf.reshape(routed_prediction, shape=(-1, self.caps, self.caps_dims))
+        return tf.reshape(activation, shape=(-1, self.caps, self.caps_dims))
 
 
 class FlattenCaps(k.layers.Layer):
