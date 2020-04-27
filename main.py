@@ -112,7 +112,7 @@ if __name__ == '__main__':
         model.evaluate(x_test, [y_test, x_test])
     else:
         # training
-        tb = k.callbacks.TensorBoard(histogram_freq=1, write_grads=True)
+        tb = k.callbacks.TensorBoard(histogram_freq=1)
         model.fit(x_train, [y_train, x_train], batch_size=50, epochs=5, validation_split=0.1, callbacks=[checkpoint, tb])
 
 

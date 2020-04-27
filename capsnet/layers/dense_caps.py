@@ -102,7 +102,7 @@ class DenseCaps(k.layers.Layer):
             cond=lambda _i, _logits, _pre_activation: i < self.routing_iter,
             body=routing_loop,
             loop_vars=[i, logits, pre_activation],
-            swap_memory=True
+            back_prop=False
         )
         # return activation from the updated logits
         return routing_step(logits, pre_activation)

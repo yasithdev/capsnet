@@ -22,7 +22,6 @@ def routing_loop(_i, _logits, _pre_activation):
     _agreement = tf.reduce_sum(_pre_activation * _activation, axis=-1, keepdims=True)  # shape: (b,p,q,r,s,1)
     # update routing weight
     _logits = _logits + _agreement
-    print(_agreement)
     # return updated variables
     return _i + 1, _logits, _pre_activation
 
@@ -32,14 +31,26 @@ class StackedConvCaps(k.layers.Layer):
         super().__init__(**kwargs)
         self.filters = filters
         self.filter_dims = filter_dims
+        self.kernel_size = kernel_size
+        self.strides = strides
         self.routing_iter = routing_iter
         # build-time parameters
         self.input_filters = ...
         self.input_filter_dims = ...
         self.conv_layer = ...  # type: k.layers.Conv3D
-        # only accept kernel_size and strides specified in 2D
-        self.kernel_size = kernel_size
-        self.strides = strides
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'filters': self.filters,
+            'filter_dims': self.filter_dims,
+            'kernel_size': self.kernel_size,
+            'strides': self.strides,
+            'routing_iter': self.routing_iter,
+            'input_filers': self.input_filters,
+            'input_filter_dims': self.input_filter_dims
+        })
+        return config
 
     def build(self, input_shape: tf.TensorShape):
         # sanity check
@@ -96,7 +107,8 @@ class StackedConvCaps(k.layers.Layer):
         tf.while_loop(
             cond=lambda _i, _logits, _pre_activation: i < self.routing_iter,
             body=routing_loop,
-            loop_vars=[i, logits, pre_activation]
+            loop_vars=[i, logits, pre_activation],
+            back_prop=False
         )
         # return activation from the updated logits
         return routing_step(logits, pre_activation)  # shape: (b,p,q,r,1,n)
