@@ -11,7 +11,7 @@ def routing_step(_logits, _pre_activation):
     # calculate activation based on _prob
     _activation = tf.reduce_sum(_prob * _pre_activation, axis=-2, keepdims=True)  # shape: (b,p,q,r,1,n)
     # squash over 3D space and return
-    return squash(_activation, axis=(1, 2, 3))  # shape: (b,p,q,r,1,n)
+    return squash(_activation, axis=tf.constant((1, 2, 3)))  # shape: (b,p,q,r,1,n)
 
 
 @tf.function
@@ -22,6 +22,7 @@ def routing_loop(_i, _logits, _pre_activation):
     _agreement = tf.reduce_sum(_pre_activation * _activation, axis=-1, keepdims=True)  # shape: (b,p,q,r,s,1)
     # update routing weight
     _logits = _logits + _agreement
+    print(_agreement)
     # return updated variables
     return _i + 1, _logits, _pre_activation
 

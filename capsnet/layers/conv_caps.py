@@ -13,5 +13,5 @@ class ConvCaps(k.layers.Conv2D):
     def call(self, inputs, **kwargs):
         result = super(ConvCaps, self).call(inputs)
         result = tf.reshape(result, shape=(-1, *result.shape[1:3], result.shape[3] // self.filter_dims, self.filter_dims))
-        activation = squash(result, axis=-1)
+        activation = squash(result, axis=tf.constant((-1)))
         return activation

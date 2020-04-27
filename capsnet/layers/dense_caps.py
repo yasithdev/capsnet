@@ -17,7 +17,7 @@ def routing_step(_logits, _pre_activation):
     # calculate activation based on _prob
     _activation = tf.reduce_sum(_prob * _pre_activation, axis=1, keepdims=True)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
     # squash over dim_caps and return
-    return squash(_activation, axis=-2)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+    return squash(_activation, axis=tf.constant((-2)))  # shape: (batch_size, 1, num_caps, dim_caps, 1)
 
 
 @tf.function

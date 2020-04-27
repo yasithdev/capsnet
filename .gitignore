@@ -139,3 +139,6 @@ dmypy.json
 # IDEA
 .idea/
 
+# Tensorboard logs
+/logs
+

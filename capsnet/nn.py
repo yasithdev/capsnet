@@ -14,7 +14,6 @@ def norm(data, axis=-1):
     return tf.sqrt(squared_norm + e)
 
 
-@tf.function
 def squash(data, axis):
     """
     Normalize to unit vectors
