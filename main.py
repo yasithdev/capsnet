@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
     # configure model and print summary
     model = get_model(input_shape=x_train.shape[1:], name=model_name)
-    model.compile(optimizer='adam', loss=[losses.margin_loss, losses.reconstruction_loss], loss_weights=[1, 0],
+    model.compile(optimizer='adam', loss=[losses.margin_loss, losses.reconstruction_loss], loss_weights=[1, 5e-3],
                   metrics={'margin': metrics.accuracy})
     model.summary(line_length=120)
 

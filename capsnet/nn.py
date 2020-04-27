@@ -23,5 +23,6 @@ def squash(data, axis):
     :return:
     """
     squared_norm = tf.reduce_sum(tf.square(data), axis=axis, keepdims=True)
-    scale = squared_norm / (1 + squared_norm) / tf.sqrt(squared_norm)
-    return data * scale
+    unit = data / tf.sqrt(squared_norm + 1e-24)
+    scale = squared_norm / (1 + squared_norm)
+    return scale * unit

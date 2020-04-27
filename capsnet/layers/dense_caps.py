@@ -96,13 +96,12 @@ class DenseCaps(k.layers.Layer):
         caps = tensor_shape[2]
         # define variables
         logits = tf.zeros(shape=(batch_size, input_caps, caps, 1, 1))  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
-        i = 0
-        pre_activation_ = pre_activation
+        iteration = 0
         # update logits at each routing iteration
         tf.while_loop(
-            cond=lambda _i, _logits, _pre_activation: i < self.routing_iter,
+            cond=lambda i, l, a: i < self.routing_iter,
             body=routing_loop,
-            loop_vars=[i, logits, pre_activation_],
+            loop_vars=[iteration, logits, pre_activation],
             back_prop=False
         )
         # return activation from the updated logits
