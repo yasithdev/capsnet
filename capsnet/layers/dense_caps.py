@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow import keras as k
 
-from capsnet.nn import squash
+from capsnet.nn import squash, softmax
 
 
 @tf.function
@@ -13,7 +13,7 @@ def routing_step(_logits, _pre_activation):
     :return:
     """
     # softmax of logits over all capsules (such that their sum is 1)
-    _prob = tf.nn.softmax(_logits, axis=2)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
+    _prob = softmax(_logits, axis=2)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
     # calculate activation based on _prob
     _activation = tf.reduce_sum(_prob * _pre_activation, axis=1, keepdims=True)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
     # squash over dim_caps and return

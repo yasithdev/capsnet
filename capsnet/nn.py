@@ -8,8 +8,9 @@ def softmax(_logits, axis):
 
 
 @tf.function
-def norm(data, e=k.backend.epsilon(), axis=-1, keepdims=False):
-    squared_norm = tf.reduce_sum(tf.square(data), axis=axis, keepdims=keepdims)
+def norm(data, axis=-1):
+    e = k.backend.epsilon()
+    squared_norm = tf.reduce_sum(tf.square(data), axis=axis, keepdims=False)
     return tf.sqrt(squared_norm + e)
 
 
