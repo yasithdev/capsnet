@@ -21,7 +21,7 @@ ERR_FILE_NOT_FOUND = f"{SAVE_PATH} - file not found"
 
 if __name__ == '__main__':
     # command-line arguments
-    assert sys.argv == 2, USAGE_EXPR
+    assert len(sys.argv) == 2, USAGE_EXPR
     mode = sys.argv[1].strip().lower()
     assert mode in ["train", "test", "demo"], USAGE_EXPR
 
