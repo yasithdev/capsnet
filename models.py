@@ -35,7 +35,7 @@ def fully_connected_decoder(target_shape):
         nl = kl.Dense(512, activation='relu', name="decoder_dense_1")(nl)
         nl = kl.Dense(1024, activation='relu', name="decoder_dense_2")(nl)
         nl = kl.Dense(tf.reduce_prod(target_shape), activation='sigmoid', name="decoder_dense_3")(nl)
-        nl = kl.Reshape(target_shape, name='reconstruction')(nl)
+        nl = kl.Reshape(target_shape, name='recon')(nl)
         return nl
 
     return decoder
@@ -60,7 +60,7 @@ def conv_decoder(target_shape):
         nl = kl.BatchNormalization(momentum=0.8, name="decoder_bn")(nl)
         nl = kl.Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), activation='relu', name="decoder_dconv_1")(nl)
         nl = kl.Conv2DTranspose(filters=1, kernel_size=(3, 3), strides=(2, 2), output_padding=(1, 1), activation='relu', name="decoder_dconv_2")(nl)
-        nl = kl.Reshape(target_shape, name='reconstruction')(nl)
+        nl = kl.Reshape(target_shape, name='recon')(nl)
         return nl
 
     return decoder
