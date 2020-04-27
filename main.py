@@ -71,7 +71,7 @@ def create_capsnet_model(input_shape, name) -> k.Model:
     # capsule block 1
     cap1 = ConvCaps(filters=32, filter_dims=4, kernel_size=(3, 3), strides=(1, 1), name='cap1_l1')(cl)
     cap1 = StackedConvCaps(filters=32, filter_dims=8, routing_iter=0, kernel_size=(3, 3), strides=(1, 1), name='cap1_l2')(cap1)
-    cap1 = StackedConvCaps(filters=32, filter_dims=16, routing_iter=0, kernel_size=(3, 3), strides=(1, 1), name='cap1_l3')(cap1)
+    cap1 = StackedConvCaps(filters=32, filter_dims=16, routing_iter=3, kernel_size=(3, 3), strides=(1, 1), name='cap1_l3')(cap1)
     # merging
     # fl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='prediction')(cap1)
     fl = FlattenCaps(caps=10, name='prediction')(cap1)
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     y_train, y_test = k.utils.to_categorical(y_train, NUM_CLASSES), k.utils.to_categorical(y_test, NUM_CLASSES)
 
     model = create_capsnet_model(input_shape=x_train.shape[1:], name='mnist_capsnet')
-    model.compile(optimizer='adam', loss=[Losses.margin_loss, Losses.reconstruction_loss], loss_weights=[1, 0],
+    model.compile(optimizer='adam', loss=[Losses.margin_loss, Losses.reconstruction_loss], loss_weights=[10, 0],
                   metrics={'margin': Metrics.accuracy})
     model.summary(line_length=120)
 
@@ -112,7 +112,8 @@ if __name__ == '__main__':
         model.evaluate(x_test, [y_test, x_test])
     else:
         # training
-        model.fit(x_train, [y_train, x_train], batch_size=50, epochs=5, validation_split=0.1, callbacks=[checkpoint])
+        tb = k.callbacks.TensorBoard(histogram_freq=1, write_grads=True)
+        model.fit(x_train, [y_train, x_train], batch_size=50, epochs=5, validation_split=0.1, callbacks=[checkpoint, tb])
 
 
     def print_results():
