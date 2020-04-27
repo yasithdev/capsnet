@@ -5,7 +5,7 @@ from capsnet.nn import squash
 
 
 class ConvCaps(k.layers.Layer):
-    def __init__(self, filters, filter_dims, kernel_size, strides: int = (1, 1), **kwargs):
+    def __init__(self, filters, filter_dims, kernel_size, strides=(1, 1), **kwargs):
         super().__init__(**kwargs)
         self.filters = filters
         self.filter_dims = filter_dims
