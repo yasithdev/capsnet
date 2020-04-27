@@ -123,7 +123,7 @@ class StackedConvCaps(k.layers.Conv3D):
         # get activation by dynamic routing
         activation = self.dynamic_routing(pre_activation=result)  # shape: (b,p,q,n,r,1)
         # return activation in (b,p,q,r,n,1) form
-        return tf.reshape(tf.transpose(activation, perm=(0, 1, 2, 4, 3, 5)), shape=(-1, *activation.shape[1:-1]))
+        return tf.linalg.matrix_transpose(tf.squeeze(activation, axis=-1))
 
     @tf.function
     def dynamic_routing(self, pre_activation):
@@ -161,7 +161,7 @@ class StackedConvCaps(k.layers.Conv3D):
         # define routing weight
         logits = tf.zeros(shape=(b, p, q, 1, r, s), dtype=tf.float32)  # shape: (b,p,q,1,r,s)
         # update logits at each routing iteration
-        for _ in range(self.routing_iter):
+        for i in range(self.routing_iter):
             # step 1: find the activation from logits
             activation = routing_step(logits, pre_activation)  # shape: (b,p,q,n,r,1)
             # step 2: find the agreement (dot product) between pre_activation (b,p,q,n,r,s) and activation (b,p,q,n,r,1), across dim_caps
@@ -247,10 +247,10 @@ class DenseCaps(k.layers.Layer):
             # squash over dim_caps and return
             return NN.squash(_activation, axis=-2)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
 
-        prediction_shape = tf.shape(pre_activation)
-        batch_size = prediction_shape[0]
-        input_caps = prediction_shape[1]
-        caps = prediction_shape[2]
+        tensor_shape = tf.shape(pre_activation)
+        batch_size = tensor_shape[0]
+        input_caps = tensor_shape[1]
+        caps = tensor_shape[2]
         # initialize logits to zero
         logits = tf.zeros(shape=(batch_size, input_caps, caps, 1, 1), dtype=tf.float32)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
         # update logits at each routing iteration
