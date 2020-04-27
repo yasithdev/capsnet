@@ -118,14 +118,11 @@ class StackedConvCaps(k.layers.Layer):
         result = tf.reshape(result, shape=(-1, *result.shape[1:4], self.filters, self.filter_dims))
         # transpose into (b,p,q,r,s,n)
         result = tf.transpose(result, perm=(0, 1, 2, 4, 3, 5))
-        # TEMP hack to test without dynamic routing
-        # return tf.reduce_max(result, axis=-2)
         # get activation by dynamic routing
         activation = self.dynamic_routing(pre_activation=result)  # shape: (b,p,q,r,1,n)
         # return activation in (b,p,q,r,n) form
         return tf.squeeze(activation, axis=-2)
 
-    @tf.function
     def dynamic_routing(self, pre_activation):
         """
         Dynamic routing in 3D Convolution.
@@ -234,7 +231,6 @@ class DenseCaps(k.layers.Layer):
         # reshape to (None, num_caps, dim_caps) and return
         return tf.reshape(activation, shape=(-1, self.caps, self.caps_dims))
 
-    @tf.function
     def dynamic_routing(self, pre_activation):
         """
         Dynamic Routing as proposed in the original paper

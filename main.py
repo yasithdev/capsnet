@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from tensorflow import keras as k
 from tensorflow.keras.datasets import mnist
 
-from capsnet import Losses, Metrics, NN, DenseCaps, StackedConvCaps, ConvCaps
+from capsnet import Losses, Metrics, NN, StackedConvCaps, ConvCaps, FlattenCaps
 
 # Set random seeds so that the same outputs are generated always
 np.random.seed(42)
@@ -67,19 +67,20 @@ def create_capsnet_model(input_shape, name) -> k.Model:
     # input layer
     il = k.layers.Input(shape=input_shape, name='input')
     # encoder
-    # hl = k.layers.Conv2D(filters=256, kernel_size=(9, 9), strides=(1, 1), activation='relu', name='conv')(il)
-    hl = ConvCaps(filters=32, filter_dims=8, kernel_size=(9, 9), strides=(1, 1), name='conv_caps')(il)
-    hl = StackedConvCaps(filters=32, filter_dims=8, routing_iter=3, kernel_size=(9, 9), strides=(2, 2), name='caps_conv')(hl)
-    # hl = StackedConvCaps(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(1, 1), routing_iter=1, name='caps_conv_3d_2')(hl)
-    # hl = StackedConvCaps(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(1, 1), routing_iter=3, name='caps_conv_3d_3')(hl)
-    hl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='prediction')(hl)
-    # hl = FlattenCaps(caps=10, name='prediction')(hl)
+    cl = k.layers.Conv2D(filters=128, kernel_size=(3, 3), strides=(1, 1), activation='relu', name='conv')(il)
+    # capsule block 1
+    cap1 = ConvCaps(filters=32, filter_dims=4, kernel_size=(3, 3), strides=(1, 1), name='cap1_l1')(cl)
+    cap1 = StackedConvCaps(filters=32, filter_dims=8, routing_iter=0, kernel_size=(3, 3), strides=(1, 1), name='cap1_l2')(cap1)
+    cap1 = StackedConvCaps(filters=32, filter_dims=16, routing_iter=0, kernel_size=(3, 3), strides=(1, 1), name='cap1_l3')(cap1)
+    # merging
+    # fl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='prediction')(cap1)
+    fl = FlattenCaps(caps=10, name='prediction')(cap1)
     # decoder
-    decoder = fc_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="fc_decoder")(hl)
+    decoder = fc_decoder(input_shape=fl.shape[1:], target_shape=input_shape, name="fc_decoder")(fl)
     # decoder = conv_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="conv_decoder")(hl)
 
     # output layers
-    margin = k.layers.Lambda(NN.norm, name='margin')(hl)
+    margin = k.layers.Lambda(NN.norm, name='margin')(fl)
     reconstruction = k.layers.Reshape(input_shape, name='reconstruction')(decoder)
     # define the model
     return k.models.Model(inputs=il, outputs=[margin, reconstruction], name=name)
