@@ -17,10 +17,11 @@ def norm(data, axis=-1):
 def squash(data, axis):
     """
     Normalize to unit vectors
+    :param e: small constant for numerical stability
     :param data: Tensor with rank >= 2
     :param axis: axis over which to squash
     :return:
     """
-    e = k.backend.epsilon()
     squared_norm = tf.reduce_sum(tf.square(data), axis=axis, keepdims=True)
-    return (squared_norm / (1 + squared_norm)) * (data / tf.sqrt(squared_norm + e))
+    scale = squared_norm / (1 + squared_norm) / tf.sqrt(squared_norm)
+    return data * scale

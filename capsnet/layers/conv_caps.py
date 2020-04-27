@@ -15,14 +15,12 @@ class ConvCaps(k.layers.Layer):
         config = super().get_config().copy()
         config.update({
             'filters': self.filters,
-            'filter_dims': self.filter_dims,
-            'kernel_size': self.kernel_size,
-            'strides': self.strides
+            'filter_dims': self.filter_dims
         })
         return config
 
     def call(self, inputs, **kwargs):
-        result = self.conv_layer.call(inputs)
-        result = tf.reshape(result, shape=(-1, *result.shape[1:3], result.shape[3] // self.filter_dims, self.filter_dims))
-        activation = squash(result, axis=tf.constant((-1)))
+        result = self.conv_layer(inputs)
+        result = tf.reshape(result, shape=(-1, *result.shape[1:3], self.filters, self.filter_dims))
+        activation = squash(result, axis=-1)
         return activation

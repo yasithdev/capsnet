@@ -17,7 +17,7 @@ def routing_step(_logits, _pre_activation):
     # calculate activation based on _prob
     _activation = tf.reduce_sum(_prob * _pre_activation, axis=1, keepdims=True)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
     # squash over dim_caps and return
-    return squash(_activation, axis=tf.constant((-2)))  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+    return squash(_activation, axis=-2)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
 
 
 @tf.function
@@ -97,11 +97,12 @@ class DenseCaps(k.layers.Layer):
         # define variables
         logits = tf.zeros(shape=(batch_size, input_caps, caps, 1, 1))  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
         i = 0
+        pre_activation_ = pre_activation
         # update logits at each routing iteration
         tf.while_loop(
             cond=lambda _i, _logits, _pre_activation: i < self.routing_iter,
             body=routing_loop,
-            loop_vars=[i, logits, pre_activation],
+            loop_vars=[i, logits, pre_activation_],
             back_prop=False
         )
         # return activation from the updated logits
