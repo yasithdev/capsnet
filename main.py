@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from tensorflow import keras as k
 from tensorflow.keras.datasets import mnist
 
-from capsnet import Losses, Metrics, NN, StackedConvCaps, ConvCaps, FlattenCaps
+from capsnet import losses, metrics, nn, layers
 
 # Set random seeds so that the same outputs are generated always
 np.random.seed(42)
@@ -20,7 +20,7 @@ def max_mask(inputs):
     :param inputs: shape: (None, num_caps, dim_caps)
     :return:
     """
-    norm = NN.norm(inputs, axis=-1)  # shape: (None, num_caps)
+    norm = nn.norm(inputs, axis=-1)  # shape: (None, num_caps)
     argmax = tf.argmax(norm, axis=-1)  # shape: (None, )
     mask = tf.expand_dims(tf.one_hot(argmax, depth=norm.shape[-1]), axis=-1)  # shape: (None, num_caps, 1)
     masked_input = tf.multiply(inputs, mask)  # shape: (None, num_caps, dim_caps)
@@ -33,7 +33,7 @@ def mask_cid(inputs):
     :param inputs: shape: (None, num_caps, dim_caps)
     :return:
     """
-    norm = NN.norm(inputs, axis=-1)  # shape: (None, num_caps)
+    norm = nn.norm(inputs, axis=-1)  # shape: (None, num_caps)
     # build index of elements to collect
     i = tf.range(start=0, limit=tf.shape(inputs)[0], delta=1)  # shape: (None, )
     j = tf.argmax(norm, axis=-1)  # shape: (None, )
@@ -69,18 +69,18 @@ def create_capsnet_model(input_shape, name) -> k.Model:
     # encoder
     cl = k.layers.Conv2D(filters=128, kernel_size=(3, 3), strides=(1, 1), activation='relu', name='conv')(il)
     # capsule block 1
-    cap1 = ConvCaps(filters=32, filter_dims=4, kernel_size=(3, 3), strides=(1, 1), name='cap1_l1')(cl)
-    cap1 = StackedConvCaps(filters=32, filter_dims=8, routing_iter=0, kernel_size=(3, 3), strides=(1, 1), name='cap1_l2')(cap1)
-    cap1 = StackedConvCaps(filters=32, filter_dims=16, routing_iter=3, kernel_size=(3, 3), strides=(1, 1), name='cap1_l3')(cap1)
+    cap1 = layers.ConvCaps(filters=32, filter_dims=4, kernel_size=(3, 3), strides=(1, 1), name='cap1_l1')(cl)
+    cap1 = layers.StackedConvCaps(filters=32, filter_dims=8, routing_iter=0, kernel_size=(3, 3), strides=(1, 1), name='cap1_l2')(cap1)
+    cap1 = layers.StackedConvCaps(filters=32, filter_dims=16, routing_iter=3, kernel_size=(3, 3), strides=(1, 1), name='cap1_l3')(cap1)
     # merging
     # fl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='prediction')(cap1)
-    fl = FlattenCaps(caps=10, name='prediction')(cap1)
+    fl = layers.FlattenCaps(caps=10, name='prediction')(cap1)
     # decoder
     decoder = fc_decoder(input_shape=fl.shape[1:], target_shape=input_shape, name="fc_decoder")(fl)
     # decoder = conv_decoder(input_shape=hl.shape[1:], target_shape=input_shape, name="conv_decoder")(hl)
 
     # output layers
-    margin = k.layers.Lambda(NN.norm, name='margin')(fl)
+    margin = k.layers.Lambda(nn.norm, name='margin')(fl)
     reconstruction = k.layers.Reshape(input_shape, name='reconstruction')(decoder)
     # define the model
     return k.models.Model(inputs=il, outputs=[margin, reconstruction], name=name)
@@ -98,8 +98,8 @@ if __name__ == '__main__':
     y_train, y_test = k.utils.to_categorical(y_train, NUM_CLASSES), k.utils.to_categorical(y_test, NUM_CLASSES)
 
     model = create_capsnet_model(input_shape=x_train.shape[1:], name='mnist_capsnet')
-    model.compile(optimizer='adam', loss=[Losses.margin_loss, Losses.reconstruction_loss], loss_weights=[10, 0],
-                  metrics={'margin': Metrics.accuracy})
+    model.compile(optimizer='adam', loss=[losses.margin_loss, losses.reconstruction_loss], loss_weights=[1, 0],
+                  metrics={'margin': metrics.accuracy})
     model.summary(line_length=120)
 
     # checkpoint function to save best weights
