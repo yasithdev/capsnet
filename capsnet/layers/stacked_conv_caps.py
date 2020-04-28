@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow import keras as k
 
-from capsnet.nn import softmax, squash
+from capsnet.nn import softmax
 
 
 @tf.function
@@ -28,12 +28,13 @@ def routing_loop(_i, _logits, _pre_activation):
 
 
 class StackedConvCaps(k.layers.Layer):
-    def __init__(self, filters, filter_dims, routing_iter, kernel_size, strides, **kwargs):
+    def __init__(self, filters, filter_dims, routing_iter, kernel_size, strides, padding='valid', **kwargs):
         super().__init__(**kwargs)
         self.filters = filters
         self.filter_dims = filter_dims
         self.kernel_size = kernel_size
         self.strides = strides
+        self.padding = padding
         self.routing_iter = routing_iter
         # build-time parameters
         self.input_filters = ...
@@ -47,6 +48,7 @@ class StackedConvCaps(k.layers.Layer):
             'filter_dims': self.filter_dims,
             'kernel_size': self.kernel_size,
             'strides': self.strides,
+            'padding': self.padding,
             'routing_iter': self.routing_iter,
             'input_filers': self.input_filters,
             'input_filter_dims': self.input_filter_dims
@@ -63,7 +65,8 @@ class StackedConvCaps(k.layers.Layer):
         self.conv_layer = k.layers.Conv3D(
             filters=self.filters * self.filter_dims,
             kernel_size=(*self.kernel_size, self.input_filter_dims),
-            strides=(*self.strides, self.input_filter_dims)
+            strides=(*self.strides, self.input_filter_dims),
+            padding=self.padding
         )
         # mark as built
         self.built = True

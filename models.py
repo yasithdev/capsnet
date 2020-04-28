@@ -28,39 +28,44 @@ def original_model(name, input_shape, num_classes) -> k.Model:
     return k.Model(inputs=inl, outputs=[pred, recon], name=name)
 
 
+def deep_caps_model(name, input_shape, num_classes) -> k.Model:
+    inl = k.layers.Input(shape=input_shape, name='input')
+    nl = k.layers.Conv2D(filters=256, kernel_size=(3, 3), strides=(2, 2), activation='relu', padding='same', name='conv2d')(inl)
+    nl = layers.ConvCaps(filters=64, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), padding='same', name='cap1_conv1')(nl)
+    nl = layers.StackedConvCaps(filters=32, filter_dims=16, routing_iter=3, kernel_size=(3, 3), strides=(2, 2), padding='same', name='cap1_conv2')(nl)
+    nl = layers.FlattenCaps(caps=num_classes, name='cap1_flatten')(nl)
+    pred = k.layers.Lambda(nn.norm, name='pred')(nl)
+    recon = conv_decoder(target_shape=input_shape)(nl)
+    return k.models.Model(inputs=inl, outputs=[pred, recon], name=name)
+
+
 def fully_connected_decoder(target_shape):
     def decoder(input_tensor):
-        nl = kl.Lambda(functions.mask, name="decoder_masking")(input_tensor)
-        nl = kl.Flatten(name="decoder_flatten")(nl)
-        nl = kl.Dense(512, activation='relu', name="decoder_dense_1")(nl)
-        nl = kl.Dense(1024, activation='relu', name="decoder_dense_2")(nl)
-        nl = kl.Dense(tf.reduce_prod(target_shape), activation='sigmoid', name="decoder_dense_3")(nl)
+        nl = kl.Lambda(functions.mask_cid, name="dc_masking")(input_tensor)
+        nl = kl.Dense(512, activation='relu', name="dc_dense_1")(nl)
+        nl = kl.Dense(1024, activation='relu', name="dc_dense_2")(nl)
+        nl = kl.Dense(tf.reduce_prod(target_shape), activation='sigmoid', name="dc_dense_3")(nl)
         nl = kl.Reshape(target_shape, name='recon')(nl)
         return nl
 
     return decoder
 
 
-def deep_caps_model(name, input_shape, num_classes) -> k.Model:
-    inl = k.layers.Input(shape=input_shape, name='input')
-    nl = k.layers.Conv2D(filters=128, kernel_size=(3, 3), strides=(2, 2), activation='relu', name='conv2d')(inl)
-    nl = layers.ConvCaps(filters=32, filter_dims=4, kernel_size=(3, 3), strides=(1, 1), name='cap1_conv1')(nl)
-    nl = layers.StackedConvCaps(filters=32, filter_dims=8, routing_iter=3, kernel_size=(3, 3), strides=(1, 1), name='cap1_conv2')(nl)
-    nl = layers.FlattenCaps(caps=num_classes, name='cap1_flatten')(nl)
-    pred = k.layers.Lambda(nn.norm, name='pred')(nl)
-    recon = fully_connected_decoder(target_shape=input_shape)(nl)
-    return k.models.Model(inputs=inl, outputs=[pred, recon], name=name)
-
-
 def conv_decoder(target_shape):
+    conv_params = {'kernel_size': (3, 3), 'strides': (2, 2), 'activation': 'relu', 'padding': 'same'}
+    W, D, N = target_shape[0], target_shape[2], 0
+    while W % (2 ** N) == 0: N = N + 1
+    N = N - 1
+    W_S = W // (2 ** N)
+
     def decoder(input_tensor):
-        nl = kl.Lambda(functions.mask_cid, name="decoder_masking")(input_tensor)
-        nl = kl.Dense(11 * 11 * 256, name="decoder_dense")(nl)
-        nl = kl.Reshape((11, 11, 256), name="decoder_reshape")(nl)
-        nl = kl.BatchNormalization(momentum=0.8, name="decoder_bn")(nl)
-        nl = kl.Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), activation='relu', name="decoder_dconv_1")(nl)
-        nl = kl.Conv2DTranspose(filters=1, kernel_size=(3, 3), strides=(2, 2), output_padding=(1, 1), activation='relu', name="decoder_dconv_2")(nl)
-        nl = kl.Reshape(target_shape, name='recon')(nl)
+        nl = kl.Lambda(functions.mask_cid, name="dc_masking")(input_tensor)
+        nl = kl.Dense(W_S * W_S * D, name="dc_dense")(nl)
+        nl = kl.BatchNormalization(momentum=0.8, name="dc_batch_norm")(nl)
+        nl = kl.Reshape((W_S, W_S, D), name="dc_reshape")(nl)
+        for i in range(N - 1):
+            nl = kl.Conv2DTranspose(filters=256 * D * (N - i), **conv_params, name=f"decoder_dconv_{i + 1}")(nl)
+        nl = kl.Conv2DTranspose(filters=D, **conv_params, name="recon")(nl)
         return nl
 
     return decoder

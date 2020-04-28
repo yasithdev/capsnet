@@ -5,11 +5,11 @@ from capsnet.nn import squash
 
 
 class ConvCaps(k.layers.Layer):
-    def __init__(self, filters, filter_dims, kernel_size, strides=(1, 1), activation=None, **kwargs):
+    def __init__(self, filters, filter_dims, kernel_size, strides=(1, 1), padding='valid', activation=None, **kwargs):
         super().__init__(**kwargs)
         self.filters = filters
         self.filter_dims = filter_dims
-        self.conv_layer = k.layers.Conv2D(self.filters * self.filter_dims, kernel_size, strides=strides, activation=activation)
+        self.conv_layer = k.layers.Conv2D(self.filters * self.filter_dims, kernel_size, strides=strides, padding=padding, activation=activation)
 
     def get_config(self):
         config = super().get_config().copy()
