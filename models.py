@@ -9,23 +9,23 @@ from capsnet import nn, layers
 from capsnet.layers import ConvCaps, DenseCaps
 
 
-def get_model(name, input_shape) -> k.Model:
+def get_model(name, input_shape, num_classes) -> k.Model:
     if name == "original":
-        return mnist_model_original(input_shape, name)
+        return original_model(name, input_shape, num_classes)
     elif name == "deepcaps":
-        return deep_caps_model(input_shape, name)
+        return deep_caps_model(name, input_shape, num_classes)
     else:
         exit(1)
 
 
-def mnist_model_original(input_shape, name) -> k.Model:
+def original_model(name, input_shape, num_classes) -> k.Model:
     inl = kl.Input(shape=input_shape, name='input')
     nl = kl.Conv2D(filters=256, kernel_size=(9, 9), strides=(1, 1), activation='relu', name='conv')(inl)
     nl = ConvCaps(filters=32, filter_dims=8, kernel_size=(9, 9), strides=(2, 2), activation='relu', name='conv_caps_2d')(nl)
-    nl = DenseCaps(caps=10, caps_dims=16, routing_iter=3, name='dense_caps')(nl)
-    margin = kl.Lambda(nn.norm, name='margin')(nl)
-    reconstruction = fully_connected_decoder(input_shape)(nl)
-    return k.Model(inputs=inl, outputs=[margin, reconstruction], name=name)
+    nl = DenseCaps(caps=num_classes, caps_dims=16, routing_iter=3, name='dense_caps')(nl)
+    pred = kl.Lambda(nn.norm, name='pred')(nl)
+    recon = fully_connected_decoder(input_shape)(nl)
+    return k.Model(inputs=inl, outputs=[pred, recon], name=name)
 
 
 def fully_connected_decoder(target_shape):
@@ -41,15 +41,15 @@ def fully_connected_decoder(target_shape):
     return decoder
 
 
-def deep_caps_model(input_shape, name) -> k.Model:
+def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     inl = k.layers.Input(shape=input_shape, name='input')
-    nl = k.layers.Conv2D(filters=128, kernel_size=(3, 3), strides=(2, 2), activation='relu', name='conv')(inl)
-    nl = layers.ConvCaps(filters=32, filter_dims=4, kernel_size=(3, 3), strides=(1, 1), name='cap1_l1')(nl)
-    nl = layers.StackedConvCaps(filters=32, filter_dims=8, routing_iter=3, kernel_size=(3, 3), strides=(1, 1), name='cap1_l2')(nl)
-    nl = layers.FlattenCaps(caps=10, name='prediction')(nl)
-    margin = k.layers.Lambda(nn.norm, name='margin')(nl)
-    reconstruction = fully_connected_decoder(target_shape=input_shape)(nl)
-    return k.models.Model(inputs=inl, outputs=[margin, reconstruction], name=name)
+    nl = k.layers.Conv2D(filters=128, kernel_size=(3, 3), strides=(2, 2), activation='relu', name='conv2d')(inl)
+    nl = layers.ConvCaps(filters=32, filter_dims=4, kernel_size=(3, 3), strides=(1, 1), name='cap1_conv1')(nl)
+    nl = layers.StackedConvCaps(filters=32, filter_dims=8, routing_iter=3, kernel_size=(3, 3), strides=(1, 1), name='cap1_conv2')(nl)
+    nl = layers.FlattenCaps(caps=num_classes, name='cap1_flatten')(nl)
+    pred = k.layers.Lambda(nn.norm, name='pred')(nl)
+    recon = fully_connected_decoder(target_shape=input_shape)(nl)
+    return k.models.Model(inputs=inl, outputs=[pred, recon], name=name)
 
 
 def conv_decoder(target_shape):

@@ -142,3 +142,6 @@ dmypy.json
 # Tensorboard logs
 /logs
 
+# weights
+*.hdf5
+

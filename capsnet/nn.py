@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow import keras as k
+from tensorflow.keras import backend as kb
 
 
 @tf.function
@@ -9,9 +10,9 @@ def softmax(_logits, axis):
 
 @tf.function
 def norm(data, axis=-1):
-    e = k.backend.epsilon()
-    squared_norm = tf.reduce_sum(tf.square(data), axis=axis, keepdims=False)
-    return tf.sqrt(squared_norm + e)
+    e = kb.epsilon()
+    squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=False)
+    return kb.sqrt(squared_norm + e)
 
 
 def squash(data, axis):
@@ -22,7 +23,9 @@ def squash(data, axis):
     :param axis: axis over which to squash
     :return:
     """
-    squared_norm = tf.reduce_sum(tf.square(data), axis=axis, keepdims=True)
-    unit = data / tf.sqrt(squared_norm + 1e-24)
+
+    e = kb.epsilon()
+    squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=True)
     scale = squared_norm / (1 + squared_norm)
+    unit = data / kb.sqrt(squared_norm + e)
     return scale * unit

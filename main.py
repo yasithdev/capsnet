@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow import keras as k
 from tensorflow.keras.datasets import mnist, cifar10, cifar100
 
-from capsnet import losses, metrics
+from capsnet import losses
 from functions import print_results
 from models import get_model
 
@@ -46,24 +46,34 @@ if __name__ == '__main__':
 
     # transform data for training
     if len(x_train.shape) == 3:
-        x_train, x_test = x_train[..., np.newaxis], x_test[..., np.newaxis]
+        x_train, x_test = x_train[..., None], x_test[..., None]
+    if len(y_train.shape) == 1:
+        y_train, y_test = y_train[..., None], y_test[..., None]
     # prepare for training
     x_train = tf.divide(x_train, 255.0)
     x_test = tf.divide(x_test, 255.0)
-    y_train = tf.one_hot(y_train, NUM_CLASSES)
-    y_test = tf.one_hot(y_train, NUM_CLASSES)
+    y_train = tf.one_hot(y_train.astype(int), NUM_CLASSES, axis=-1)
+    y_test = tf.one_hot(y_test.astype(int), NUM_CLASSES, axis=-1)
 
     # configure model and print summary
-    model = get_model(input_shape=x_train.shape[1:], name=model_name)
-    model.compile(optimizer='adam', loss=[losses.margin_loss, losses.reconstruction_loss], loss_weights=[1, 5e-3],
-                  metrics={'margin': metrics.accuracy})
+    model = get_model(name=model_name, input_shape=x_train.shape[1:], num_classes=NUM_CLASSES)
+    model.compile(optimizer='adam',
+                  loss=[losses.margin_loss, 'mse'],
+                  loss_weights=[1, 5e-3],
+                  metrics={'pred': 'acc'})
     model.summary(line_length=150)
 
-    filepath = f"{BASE_PATH}{model_name}_weights.hdf5"
+    filepath = f"{BASE_PATH}weights_{model_name}_{dataset_name}.hdf5"
 
     if mode == "train":
         checkpoint = k.callbacks.ModelCheckpoint(filepath, save_best_only=True)
-        model.fit(x_train, [y_train, x_train], batch_size=50, epochs=5, validation_split=0.1, callbacks=[checkpoint])
+        model.fit(x_train, [y_train, x_train],
+                  batch_size=50,
+                  epochs=5,
+                  validation_split=0.1,
+                  use_multiprocessing=True,
+                  workers=2,
+                  callbacks=[checkpoint])
 
     if mode == "test":
         assert os.path.exists(filepath), ERR_FILE_NOT_FOUND

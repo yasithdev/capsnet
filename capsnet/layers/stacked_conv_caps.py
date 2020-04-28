@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow import keras as k
 
-from capsnet.nn import softmax
+from capsnet.nn import softmax, squash
 
 
 @tf.function
@@ -10,9 +10,9 @@ def routing_step(_logits, _pre_activation):
     _prob = softmax(_logits, axis=(1, 2, 3))  # shape: (b,p,q,r,s,1)
     # calculate activation based on _prob
     _activation = tf.reduce_sum(_prob * _pre_activation, axis=-2, keepdims=True)  # shape: (b,p,q,r,1,n)
-    return _activation  # temporary hack to get the gradients flowing
+    # return _activation  # temporary hack to get the gradients flowing
     # squash over 3D space and return
-    # return squash(_activation, axis=(1, 2, 3))  # shape: (b,p,q,r,1,n)
+    return squash(_activation, axis=(1, 2, 3))  # shape: (b,p,q,r,1,n)
 
 
 @tf.function
