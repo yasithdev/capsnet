@@ -64,7 +64,7 @@ def conv_decoder(target_shape):
         nl = kl.BatchNormalization(momentum=0.8, name="dc_batch_norm")(nl)
         nl = kl.Reshape((W_S, W_S, D), name="dc_reshape")(nl)
         for i in range(N - 1):
-            nl = kl.Conv2DTranspose(filters=256 * D * (N - i), **conv_params, name=f"decoder_dconv_{i + 1}")(nl)
+            nl = kl.Conv2DTranspose(filters=64 * (N - i), **conv_params, name=f"decoder_dconv_{i + 1}")(nl)
         nl = kl.Conv2DTranspose(filters=D, **conv_params, name="recon")(nl)
         return nl
 
