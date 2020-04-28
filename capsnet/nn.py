@@ -1,5 +1,4 @@
 import tensorflow as tf
-from tensorflow import keras as k
 from tensorflow.keras import backend as kb
 
 
@@ -23,7 +22,6 @@ def squash(data, axis):
     :param axis: axis over which to squash
     :return:
     """
-
     e = kb.epsilon()
     squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=True)
     scale = squared_norm / (1 + squared_norm)

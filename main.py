@@ -47,13 +47,13 @@ if __name__ == '__main__':
     # transform data for training
     if len(x_train.shape) == 3:
         x_train, x_test = x_train[..., None], x_test[..., None]
-    if len(y_train.shape) == 1:
-        y_train, y_test = y_train[..., None], y_test[..., None]
+    if len(y_train.shape) > 1:
+        y_train, y_test = np.squeeze(y_train), np.squeeze(y_test)
     # prepare for training
-    x_train = tf.divide(x_train, 255.0)
-    x_test = tf.divide(x_test, 255.0)
-    y_train = tf.one_hot(y_train.astype(int), NUM_CLASSES, axis=-1)
-    y_test = tf.one_hot(y_test.astype(int), NUM_CLASSES, axis=-1)
+    x_train = x_train / 255.0
+    x_test = x_test / 255.0
+    y_train = k.utils.to_categorical(y_train, NUM_CLASSES)
+    y_test = k.utils.to_categorical(y_test, NUM_CLASSES)
 
     # configure model and print summary
     model = get_model(name=model_name, input_shape=x_train.shape[1:], num_classes=NUM_CLASSES)
