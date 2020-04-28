@@ -16,7 +16,7 @@ BASE_PATH = ""
 
 # error messages
 USAGE_EXPR = '''Usage:
-    ./main  [ [MODE] train | test | demo ]
+    ./main  [ [MODE] train | retrain | test | demo ]
             [ [Dataset] mnist | cifar10 | cifar100 ]
             [ [MODEL NAME] original | deepcaps ]
 '''
@@ -28,7 +28,7 @@ if __name__ == '__main__':
     mode = sys.argv[1].strip().lower()
     dataset_name = sys.argv[2].strip().lower()
     model_name = sys.argv[3].strip().lower()
-    assert mode in ["train", "test", "demo"], USAGE_EXPR
+    assert mode in ["train", "retrain", "test", "demo"], USAGE_EXPR
     assert dataset_name in ["mnist", "cifar10", "cifar100"], USAGE_EXPR
     assert model_name in ["original", "deepcaps"], USAGE_EXPR
 
@@ -65,7 +65,11 @@ if __name__ == '__main__':
 
     filepath = f"{BASE_PATH}weights_{model_name}_{dataset_name}.hdf5"
 
-    if mode == "train":
+    if mode == "retrain":
+        assert os.path.exists(filepath), ERR_FILE_NOT_FOUND
+        model.load_weights(filepath)
+
+    if mode == "train" or mode == "retrain":
         checkpoint = k.callbacks.ModelCheckpoint(filepath, save_best_only=True)
         model.fit(x_train, [y_train, x_train],
                   batch_size=50,
