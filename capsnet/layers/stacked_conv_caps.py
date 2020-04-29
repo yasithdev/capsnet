@@ -4,18 +4,25 @@ from tensorflow import keras as k
 from capsnet.nn import softmax, squash
 
 
-@tf.function
+@tf.function(input_signature=(
+        tf.TensorSpec(shape=(None, None, None, None, None, 1), dtype=tf.float32),
+        tf.TensorSpec(shape=(None, None, None, None, None, None), dtype=tf.float32),
+))
 def routing_step(_logits, _pre_activation):
     # softmax of logits over 3D space (such that their sum is 1)
-    _prob = softmax(_logits, axis=(1, 2, 3))  # shape: (b,p,q,r,s,1)
+    _prob = softmax(_logits, axis=tf.constant([1, 2, 3]))  # shape: (b,p,q,r,s,1)
     # calculate activation based on _prob
     _activation = tf.reduce_sum(_prob * _pre_activation, axis=-2, keepdims=True)  # shape: (b,p,q,r,1,n)
     # return _activation  # temporary hack to get the gradients flowing
     # squash over 3D space and return
-    return squash(_activation, axis=-1)  # shape: (b,p,q,r,1,n)
+    return squash(_activation, axis=tf.constant([-1]))  # shape: (b,p,q,r,1,n)
 
 
-@tf.function
+@tf.function(input_signature=(
+        tf.TensorSpec(shape=None, dtype=tf.int32),
+        tf.TensorSpec(shape=(None, None, None, None, None, 1), dtype=tf.float32),
+        tf.TensorSpec(shape=(None, None, None, None, None, None), dtype=tf.float32),
+))
 def routing_loop(_i, _logits, _pre_activation):
     # step 1: find the activation from logits
     _activation = routing_step(_logits, _pre_activation)  # shape: (b,p,q,r,1,n)
@@ -108,7 +115,7 @@ class StackedConvCaps(k.layers.Layer):
         initial_logits = tf.zeros(shape=(b, p, q, r, s, 1))  # shape: (b,p,q,r,s,1)
         # update logits at each routing iteration
         [_, final_logits, _] = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(
-            loop_vars=[0, initial_logits, initial_activation],
+            loop_vars=[tf.constant(0), initial_logits, initial_activation],
             cond=lambda i, l, a: i < self.routing_iter,
             body=routing_loop
         ))
