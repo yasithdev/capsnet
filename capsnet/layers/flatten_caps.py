@@ -30,7 +30,7 @@ class FlattenCaps(k.layers.Layer):
             name='w',
             shape=(1, self.input_caps, self.caps, 1),  # (1, c_in, c, 1)
             dtype=tf.float32,
-            initializer='random_normal'
+            initializer=k.initializers.RandomNormal(stddev=0.1)
         )
         self.built = True
 

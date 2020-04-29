@@ -64,7 +64,7 @@ class DenseCaps(k.layers.Layer):
             name='w',
             shape=(1, self.input_caps, self.caps, self.caps_dims, self.input_caps_dims),
             dtype=tf.float32,
-            initializer='random_normal'
+            initializer=k.initializers.RandomNormal(stddev=0.1)
         )
         self.built = True
 
