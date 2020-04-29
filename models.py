@@ -31,7 +31,7 @@ def original_model(name, input_shape, num_classes) -> k.Model:
 def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     inl = k.layers.Input(shape=input_shape, name='input')
     nl = k.layers.Conv2D(filters=256, kernel_size=(3, 3), strides=(2, 2), activation='relu', padding='same', name='conv2d')(inl)
-    nl = layers.ConvCaps(filters=64, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), padding='same', name='cap1_conv1')(nl)
+    nl = layers.ConvCaps(filters=64, filter_dims=16, kernel_size=(3, 3), strides=(2, 2), padding='same', name='cap1_conv1')(nl)
     nl = layers.StackedConvCaps(filters=32, filter_dims=16, routing_iter=3, kernel_size=(3, 3), strides=(2, 2), padding='same', name='cap1_conv2')(nl)
     nl = layers.FlattenCaps(caps=num_classes, name='cap1_flatten')(nl)
     pred = k.layers.Lambda(nn.norm, name='pred')(nl)
