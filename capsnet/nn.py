@@ -9,9 +9,8 @@ def softmax(_logits, axis):
 
 @tf.function
 def norm(data, axis=-1):
-    e = kb.epsilon()
     squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=False)
-    return kb.sqrt(squared_norm)
+    return kb.maximum(kb.sqrt(squared_norm), kb.epsilon())
 
 
 def squash(data, axis):
@@ -22,10 +21,9 @@ def squash(data, axis):
     :param axis: axis over which to squash
     :return:
     """
-    # e = kb.epsilon()
     squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=True)
     scale = squared_norm / (1 + squared_norm)
-    unit = data / kb.sqrt(squared_norm)
+    unit = data / kb.maximum(kb.sqrt(squared_norm), kb.epsilon())
     return scale * unit
 
 

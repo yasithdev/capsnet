@@ -12,7 +12,7 @@ def routing_step(_logits, _pre_activation):
     _activation = tf.reduce_sum(_prob * _pre_activation, axis=-2, keepdims=True)  # shape: (b,p,q,r,1,n)
     # return _activation  # temporary hack to get the gradients flowing
     # squash over 3D space and return
-    return squash(_activation, axis=(1, 2, 3))  # shape: (b,p,q,r,1,n)
+    return squash(_activation, axis=-1)  # shape: (b,p,q,r,1,n)
 
 
 @tf.function
