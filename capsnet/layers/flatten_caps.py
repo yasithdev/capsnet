@@ -35,6 +35,6 @@ class FlattenCaps(k.layers.Layer):
         self.built = True
 
     def call(self, inputs, **kwargs):
-        inputs = tf.reshape(inputs, (inputs.shape[0], self.input_caps, 1, self.input_caps_dims))  # (b, c_in, 1, d)
+        inputs = tf.reshape(inputs, (-1, self.input_caps, 1, self.input_caps_dims))  # (b, c_in, 1, d)
         output = tf.reduce_sum(inputs * self.w, axis=-3)  # (b, c, d)
-        return squash(tf.reduce_sum(output, axis=-3), axis=-1)
+        return squash(output, axis=-1)

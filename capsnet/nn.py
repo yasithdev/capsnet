@@ -11,7 +11,7 @@ def softmax(_logits, axis):
 def norm(data, axis=-1):
     e = kb.epsilon()
     squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=False)
-    return kb.sqrt(squared_norm + e)
+    return kb.sqrt(squared_norm)
 
 
 def squash(data, axis):
@@ -22,10 +22,10 @@ def squash(data, axis):
     :param axis: axis over which to squash
     :return:
     """
-    e = kb.epsilon()
+    # e = kb.epsilon()
     squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=True)
     scale = squared_norm / (1 + squared_norm)
-    unit = data / kb.sqrt(squared_norm + e)
+    unit = data / kb.sqrt(squared_norm)
     return scale * unit
 
 
