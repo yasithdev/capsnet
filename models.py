@@ -28,10 +28,10 @@ def original_model(name, input_shape, num_classes) -> k.Model:
     return k.Model(inputs=inl, outputs=[pred, recon], name=name)
 
 
-def residual_caps_block(filters, filter_dims, kernel_size, routing_iter):
+def residual_caps_block(filters, filter_dims, kernel_size, strides, routing_iter):
     def block(il):
         # first layer reduces output size with stride = 2
-        l1 = layers.StackedConvCaps(filters, filter_dims, routing_iter, kernel_size, strides=(2, 2), padding='same')(il)
+        l1 = layers.StackedConvCaps(filters, filter_dims, routing_iter, kernel_size, strides, padding='same')(il)
         # next layer retains output size with stride = 1
         l2 = layers.StackedConvCaps(filters, filter_dims, routing_iter, kernel_size, strides=(1, 1), padding='same')(l1)
         # next layer also retains output size with stride = 1
@@ -44,9 +44,13 @@ def residual_caps_block(filters, filter_dims, kernel_size, routing_iter):
 
 def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     inl = k.layers.Input(shape=input_shape, name='input')
+    # convert to capsule domain
     nl = layers.ConvCaps(filters=64, filter_dims=4, kernel_size=(3, 3), strides=(2, 2), activation='relu', padding='same')(inl)
-    nl = residual_caps_block(filters=64, filter_dims=8, kernel_size=(3, 3), routing_iter=3)(nl)
-    nl = residual_caps_block(filters=64, filter_dims=16, kernel_size=(3, 3), routing_iter=3)(nl)
+    # residual capsule block 1
+    nl = residual_caps_block(filters=64, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), routing_iter=3)(nl)
+    # residual capsule block 2
+    nl = residual_caps_block(filters=64, filter_dims=16, kernel_size=(3, 3), strides=(2, 2), routing_iter=3)(nl)
+    # flatten capsules
     nl = layers.FlattenCaps(caps=num_classes, name='cap1_flatten')(nl)
     pred = k.layers.Lambda(nn.norm, name='pred')(nl)
     recon = conv_decoder(target_shape=input_shape)(nl)
