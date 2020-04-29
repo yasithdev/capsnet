@@ -4,11 +4,11 @@ import sys
 
 import numpy as np
 import tensorflow as tf
+from matplotlib import pyplot as plt
 from tensorflow import keras as k
 from tensorflow.keras.datasets import mnist, cifar10, cifar100
 
 from capsnet import losses
-from functions import print_results
 from models import get_model
 
 # configuration
@@ -21,6 +21,22 @@ USAGE_EXPR = '''Usage:
             [ [MODEL NAME] original | deepcaps ]
 '''
 ERR_FILE_NOT_FOUND = "file not found"
+
+
+def print_results(x_true, x_pred, y_true, y_pred, samples=20, cols=5):
+    # define grid
+    fig, axs = plt.subplots(ncols=cols, nrows=samples // cols + 1)
+    # randomly select samples to plot
+    for z in np.random.randint(0, len(x_true), samples):
+        i = (z // cols) * 2
+        j = z % cols
+        axs[i, j].imshow(np.squeeze(x_pred), cmap='gray', vmin=0.0, vmax=1.0)
+        axs[i, j].set_title(f'Label: {y_true[z]}, Predicted: {y_pred[z]}')
+        axs[i, j].axis('off')
+        axs[i + 1, j].imshow(np.squeeze(x_true), cmap='gray', vmin=0.0, vmax=1.0)
+        axs[i + 1, j].axis('off')
+    fig.show()
+
 
 if __name__ == '__main__':
     # command-line arguments

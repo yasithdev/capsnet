@@ -4,7 +4,6 @@ import tensorflow as tf
 from tensorflow import keras as k
 from tensorflow.keras import layers as kl
 
-import functions
 from capsnet import nn, layers
 from capsnet.layers import ConvCaps, DenseCaps
 
@@ -26,6 +25,18 @@ def original_model(name, input_shape, num_classes) -> k.Model:
     pred = kl.Lambda(nn.norm, name='pred')(nl)
     recon = fully_connected_decoder(input_shape)(nl)
     return k.Model(inputs=inl, outputs=[pred, recon], name=name)
+
+
+def fully_connected_decoder(target_shape):
+    def decoder(input_tensor):
+        nl = kl.Lambda(nn.mask_cid, name="dc_masking")(input_tensor)
+        nl = kl.Dense(512, activation='relu', name="dc_dense_1")(nl)
+        nl = kl.Dense(1024, activation='relu', name="dc_dense_2")(nl)
+        nl = kl.Dense(tf.reduce_prod(target_shape), activation='sigmoid', name="dc_dense_3")(nl)
+        nl = kl.Reshape(target_shape, name='recon')(nl)
+        return nl
+
+    return decoder
 
 
 def residual_caps_block(filters, filter_dims, kernel_size, strides, routing_iter):
@@ -57,18 +68,6 @@ def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     return k.models.Model(inputs=inl, outputs=[pred, recon], name=name)
 
 
-def fully_connected_decoder(target_shape):
-    def decoder(input_tensor):
-        nl = kl.Lambda(functions.mask_cid, name="dc_masking")(input_tensor)
-        nl = kl.Dense(512, activation='relu', name="dc_dense_1")(nl)
-        nl = kl.Dense(1024, activation='relu', name="dc_dense_2")(nl)
-        nl = kl.Dense(tf.reduce_prod(target_shape), activation='sigmoid', name="dc_dense_3")(nl)
-        nl = kl.Reshape(target_shape, name='recon')(nl)
-        return nl
-
-    return decoder
-
-
 def conv_decoder(target_shape):
     conv_params = {'kernel_size': (3, 3), 'strides': (2, 2), 'activation': 'relu', 'padding': 'same'}
     W, D, N = target_shape[0], target_shape[2], 0
@@ -77,7 +76,7 @@ def conv_decoder(target_shape):
     W_S = W // (2 ** N)
 
     def decoder(input_tensor):
-        nl = kl.Lambda(functions.mask_cid, name="dc_masking")(input_tensor)
+        nl = kl.Lambda(nn.mask_cid, name="dc_masking")(input_tensor)
         nl = kl.Dense(W_S * W_S * D, name="dc_dense")(nl)
         nl = kl.BatchNormalization(momentum=0.8, name="dc_batch_norm")(nl)
         nl = kl.Reshape((W_S, W_S, D), name="dc_reshape")(nl)

@@ -27,3 +27,31 @@ def squash(data, axis):
     scale = squared_norm / (1 + squared_norm)
     unit = data / kb.sqrt(squared_norm + e)
     return scale * unit
+
+
+def mask(inputs):
+    """
+    Mask data from all capsules except the most activated one, for each instance
+    :param inputs: shape: (None, num_caps, dim_caps)
+    :return:
+    """
+    norm_ = norm(inputs, axis=-1)  # shape: (None, num_caps)
+    argmax = tf.argmax(norm_, axis=-1)  # shape: (None, )
+    mask_ = tf.expand_dims(tf.one_hot(argmax, depth=norm_.shape[-1]), axis=-1)  # shape: (None, num_caps, 1)
+    masked_input = tf.multiply(inputs, mask_)  # shape: (None, num_caps, dim_caps)
+    return masked_input
+
+
+def mask_cid(inputs):
+    """
+    Select most activated capsule from each instance and return it
+    :param inputs: shape: (None, num_caps, dim_caps)
+    :return:
+    """
+    norm_ = norm(inputs, axis=-1)  # shape: (None, num_caps)
+    # build index of elements to collect
+    i = tf.range(start=0, limit=tf.shape(inputs)[0], delta=1)  # shape: (None, )
+    j = tf.argmax(norm_, axis=-1)  # shape: (None, )
+    ij = tf.stack([i, tf.cast(j, tf.int32)], axis=1)
+    # gather from index and return
+    return tf.gather_nd(inputs, ij)
