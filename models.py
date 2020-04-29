@@ -56,9 +56,11 @@ def residual_caps_block(filters, filter_dims, kernel_size, strides, routing_iter
 def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     inl = k.layers.Input(shape=input_shape, name='input')
     # convert to capsule domain
-    nl = layers.ConvCaps(filters=64, filter_dims=4, kernel_size=(3, 3), strides=(2, 2), activation='relu', padding='same')(inl)
+    nl = layers.ConvCaps(filters=64, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), activation='relu', padding='same')(inl)
     # residual capsule block 1
-    nl = residual_caps_block(filters=64, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), routing_iter=3)(nl)
+    nl = residual_caps_block(filters=64, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), routing_iter=1)(nl)
+    # residual capsule block 2
+    nl = residual_caps_block(filters=64, filter_dims=16, kernel_size=(3, 3), strides=(2, 2), routing_iter=2)(nl)
     # residual capsule block 2
     nl = residual_caps_block(filters=64, filter_dims=16, kernel_size=(3, 3), strides=(2, 2), routing_iter=3)(nl)
     # flatten capsules
