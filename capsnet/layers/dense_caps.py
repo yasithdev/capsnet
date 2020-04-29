@@ -13,7 +13,7 @@ def routing_step(_logits, _pre_activation):
     :return:
     """
     # softmax of logits over all capsules (such that their sum is 1)
-    _prob = softmax(_logits, axis=2)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
+    _prob = softmax(_logits, axis=tf.constant([2]))  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
     # calculate activation based on _prob
     _activation = tf.reduce_sum(_prob * _pre_activation, axis=1, keepdims=True)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
     # squash over dim_caps and return
@@ -64,7 +64,7 @@ class DenseCaps(k.layers.Layer):
             name='w',
             shape=(1, self.input_caps, self.caps, self.caps_dims, self.input_caps_dims),
             dtype=tf.float32,
-            initializer=k.initializers.RandomNormal(stddev=0.1)
+            initializer=k.initializers.TruncatedNormal()
         )
         self.built = True
 
@@ -78,7 +78,7 @@ class DenseCaps(k.layers.Layer):
         # dynamic routing
         activation = self.dynamic_routing(initial_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
         # reshape to (None, num_caps, dim_caps) and return
-        return tf.reshape(activation, shape=(-1, self.caps, self.caps_dims))
+        return tf.squeeze(activation, axis=[1, 4])
 
     def dynamic_routing(self, initial_activation):
         """
@@ -93,10 +93,9 @@ class DenseCaps(k.layers.Layer):
         caps = tensor_shape[2]
         # define variables
         logits = tf.zeros(shape=(batch_size, input_caps, caps, 1, 1))  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
-        iteration = 0
         # update logits at each routing iteration
         [_, final_logits, _] = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(
-            loop_vars=[iteration, logits, initial_activation],
+            loop_vars=[tf.constant(0), logits, initial_activation],
             cond=lambda i, l, a: i < self.routing_iter,
             body=routing_loop
         ))

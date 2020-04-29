@@ -9,7 +9,13 @@ class ConvCaps(k.layers.Layer):
         super().__init__(**kwargs)
         self.filters = filters
         self.filter_dims = filter_dims
-        self.conv_layer = k.layers.Conv2D(self.filters * self.filter_dims, kernel_size, strides=strides, padding=padding, activation=activation)
+        self.conv_layer = k.layers.Conv2D(
+            filters=self.filters * self.filter_dims,
+            kernel_size=kernel_size,
+            kernel_initializer=k.initializers.TruncatedNormal(),
+            strides=strides,
+            padding=padding,
+            activation=activation)
 
     def get_config(self):
         config = super().get_config().copy()

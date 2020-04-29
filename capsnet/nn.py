@@ -1,52 +1,52 @@
 import tensorflow as tf
-from tensorflow.keras import backend as kb
 
 
-@tf.function
 def softmax(_logits, axis):
     return tf.exp(_logits) / tf.reduce_sum(tf.exp(_logits), axis, keepdims=True)
 
 
-@tf.function
-def norm(data, axis=-1):
-    squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=False)
-    return kb.maximum(kb.sqrt(squared_norm), kb.epsilon())
+@tf.function(input_signature=(tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),))
+def norm(data):
+    e = 1e-24
+    squared_sum = tf.reduce_sum(tf.square(data), axis=-1)
+    return tf.sqrt(tf.maximum(squared_sum, e))
 
 
 def squash(data, axis):
     """
     Normalize to unit vectors
-    :param e: small constant for numerical stability
     :param data: Tensor with rank >= 2
     :param axis: axis over which to squash
     :return:
     """
-    squared_norm = kb.sum(kb.square(data), axis=axis, keepdims=True)
-    scale = squared_norm / (1 + squared_norm)
-    unit = data / kb.maximum(kb.sqrt(squared_norm), kb.epsilon())
-    return scale * unit
+    e = 1e-24
+    squared_sum = tf.reduce_sum(tf.square(data), axis=axis, keepdims=True)
+    vec_norm = tf.sqrt(tf.maximum(squared_sum, e))
+    return data * tf.square(vec_norm) / (1 + tf.square(vec_norm)) / vec_norm
 
 
+@tf.function(input_signature=(tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),))
 def mask(inputs):
     """
     Mask data from all capsules except the most activated one, for each instance
     :param inputs: shape: (None, num_caps, dim_caps)
     :return:
     """
-    norm_ = norm(inputs, axis=-1)  # shape: (None, num_caps)
+    norm_ = norm(inputs)  # shape: (None, num_caps)
     argmax = tf.argmax(norm_, axis=-1)  # shape: (None, )
     mask_ = tf.expand_dims(tf.one_hot(argmax, depth=norm_.shape[-1]), axis=-1)  # shape: (None, num_caps, 1)
     masked_input = tf.multiply(inputs, mask_)  # shape: (None, num_caps, dim_caps)
     return masked_input
 
 
+@tf.function(input_signature=(tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),))
 def mask_cid(inputs):
     """
     Select most activated capsule from each instance and return it
     :param inputs: shape: (None, num_caps, dim_caps)
     :return:
     """
-    norm_ = norm(inputs, axis=-1)  # shape: (None, num_caps)
+    norm_ = norm(inputs)  # shape: (None, num_caps)
     # build index of elements to collect
     i = tf.range(start=0, limit=tf.shape(inputs)[0], delta=1)  # shape: (None, )
     j = tf.argmax(norm_, axis=-1)  # shape: (None, )
