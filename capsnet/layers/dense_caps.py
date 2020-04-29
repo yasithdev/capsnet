@@ -74,20 +74,20 @@ class DenseCaps(k.layers.Layer):
         # reshape input
         inputs = tf.reshape(inputs, (batch_size, self.input_caps, 1, 1, self.input_caps_dims))  # shape: (batch_size, p_num_caps, 1, 1, p_dim_caps)
         # calculate pre_activation (dot product of w and input over input_caps)
-        pre_activation = tf.reduce_sum(self.w * inputs, axis=-1, keepdims=True)  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
+        initial_activation = tf.reduce_sum(self.w * inputs, axis=-1, keepdims=True)  # shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
         # dynamic routing
-        activation = self.dynamic_routing(pre_activation=pre_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+        activation = self.dynamic_routing(initial_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
         # reshape to (None, num_caps, dim_caps) and return
         return tf.reshape(activation, shape=(-1, self.caps, self.caps_dims))
 
-    def dynamic_routing(self, pre_activation):
+    def dynamic_routing(self, initial_activation):
         """
         Dynamic Routing as proposed in the original paper
 
-        :param pre_activation: shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
+        :param initial_activation: shape: (batch_size, p_num_caps, num_caps, dim_caps, 1)
         :return:
         """
-        tensor_shape = tf.shape(pre_activation)
+        tensor_shape = tf.shape(initial_activation)
         batch_size = tensor_shape[0]
         input_caps = tensor_shape[1]
         caps = tensor_shape[2]
@@ -95,11 +95,10 @@ class DenseCaps(k.layers.Layer):
         logits = tf.zeros(shape=(batch_size, input_caps, caps, 1, 1))  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
         iteration = 0
         # update logits at each routing iteration
-        tf.while_loop(
+        [_, final_logits, _] = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(
+            loop_vars=[iteration, logits, initial_activation],
             cond=lambda i, l, a: i < self.routing_iter,
-            body=routing_loop,
-            loop_vars=[iteration, logits, pre_activation],
-            back_prop=False
-        )
+            body=routing_loop
+        ))
         # return activation from the updated logits
-        return routing_step(logits, pre_activation)
+        return routing_step(final_logits, initial_activation)

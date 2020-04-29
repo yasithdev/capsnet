@@ -76,17 +76,17 @@ class StackedConvCaps(k.layers.Layer):
         s = (-1, *inputs.shape[1:3], self.input_filters * self.input_filter_dims, 1)
         inputs = tf.reshape(inputs, shape=s)  # shape: (batch_size), (input_rows, input_cols, input_filters * input_filter_dims, 1)
         # perform 3D convolution
-        result = self.conv_layer(inputs)  # shape: (b,p,q,s,r * n)
+        initial_activation = self.conv_layer(inputs)  # shape: (b,p,q,s,r * n)
         # reshape into (b,p,q,s,r,n)
-        result = tf.reshape(result, shape=(-1, *result.shape[1:4], self.filters, self.filter_dims))
+        initial_activation = tf.reshape(initial_activation, shape=(-1, *initial_activation.shape[1:4], self.filters, self.filter_dims))
         # transpose into (b,p,q,r,s,n)
-        result = tf.transpose(result, perm=(0, 1, 2, 4, 3, 5))
+        initial_activation = tf.transpose(initial_activation, perm=(0, 1, 2, 4, 3, 5))
         # get activation by dynamic routing
-        activation = self.dynamic_routing(pre_activation=result)  # shape: (b,p,q,r,1,n)
+        activation = self.dynamic_routing(initial_activation)  # shape: (b,p,q,r,1,n)
         # return activation in (b,p,q,r,n) form
         return tf.squeeze(activation, axis=-2)
 
-    def dynamic_routing(self, pre_activation):
+    def dynamic_routing(self, initial_activation):
         """
         Dynamic routing in 3D Convolution.
 
@@ -98,21 +98,19 @@ class StackedConvCaps(k.layers.Layer):
         filters         (r),
         input_filters   (s),
 
-        :param pre_activation (b,p,q,r,s,n)
+        :param initial_activation (b,p,q,r,s,n)
         :return: activation (b,p,q,r,1,n)
         """
         # define dimensions
-        b = tf.shape(pre_activation)[0]
-        [p, q, r, s, _] = pre_activation.shape[1:]
+        b = tf.shape(initial_activation)[0]
+        [p, q, r, s, _] = initial_activation.shape[1:]
         # define variables
-        logits = tf.zeros(shape=(b, p, q, r, s, 1))  # shape: (b,p,q,r,s,1)
-        iteration = 0
+        initial_logits = tf.zeros(shape=(b, p, q, r, s, 1))  # shape: (b,p,q,r,s,1)
         # update logits at each routing iteration
-        tf.while_loop(
+        [_, final_logits, _] = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(
+            loop_vars=[0, initial_logits, initial_activation],
             cond=lambda i, l, a: i < self.routing_iter,
-            body=routing_loop,
-            loop_vars=[iteration, logits, pre_activation],
-            back_prop=False
-        )
+            body=routing_loop
+        ))
         # return activation from the updated logits
-        return routing_step(logits, pre_activation)  # shape: (b,p,q,r,1,n)
+        return routing_step(final_logits, initial_activation)  # shape: (b,p,q,r,1,n)

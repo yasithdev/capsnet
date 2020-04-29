@@ -28,6 +28,20 @@ def original_model(name, input_shape, num_classes) -> k.Model:
     return k.Model(inputs=inl, outputs=[pred, recon], name=name)
 
 
+def deep_caps_block(filters, filter_dims, r):
+    def residual_block(il):
+        # first layer reduces output size with stride = 2
+        l1 = layers.StackedConvCaps(filters, filter_dims, routing_iter=1, kernel_size=(3, 3), strides=(2, 2), padding='same')(il)
+        # next layer retains output size with stride = 1
+        l2 = layers.StackedConvCaps(filters, filter_dims, routing_iter=1, kernel_size=(3, 3), strides=(1, 1), padding='same')(l1)
+        # next layer also retains output size with stride = 1
+        l3 = layers.StackedConvCaps(filters, filter_dims, routing_iter=1, kernel_size=(3, 3), strides=(1, 1), padding='same')(l2)
+        # add l1 to l3 and return
+        return l3 + l1
+
+    return residual_block
+
+
 def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     inl = k.layers.Input(shape=input_shape, name='input')
     nl = k.layers.Conv2D(filters=256, kernel_size=(3, 3), strides=(2, 2), activation='relu', padding='same', name='conv2d')(inl)
