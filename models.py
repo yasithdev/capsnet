@@ -71,7 +71,7 @@ def deep_caps_model(name, input_shape, num_classes) -> k.Model:
 def conv_decoder(target_shape):
     conv_params = {'kernel_size': (3, 3), 'strides': (2, 2), 'activation': 'relu', 'padding': 'same'}
     W, D, N = target_shape[0], target_shape[2], 0
-    while W % (2 ** N) == 0: N = N + 1
+    while W // (2 ** N) > 4 and W % (2 ** N) == 0: N = N + 1
     N = N - 1
     W_S = W // (2 ** N)
 
