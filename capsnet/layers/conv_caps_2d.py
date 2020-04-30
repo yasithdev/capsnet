@@ -12,6 +12,7 @@ class ConvCaps2D(k.layers.Layer):
             kernel_size=kernel_size,
             kernel_initializer=k.initializers.TruncatedNormal(),
             strides=strides,
+            activation='relu',
             padding=padding)
 
     def get_config(self):
