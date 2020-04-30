@@ -28,13 +28,13 @@ class FlattenCaps(k.layers.Layer):
         # define weights
         self.w = self.add_weight(
             name='w',
-            shape=(1, self.input_caps, self.caps, 1),  # (1, c_in, c, 1)
+            shape=(1, self.caps, self.input_caps, 1),  # (1, c, c_in, 1)
             dtype=tf.float32,
-            initializer=k.initializers.RandomNormal(stddev=0.1)
+            initializer=k.initializers.TruncatedNormal(),
         )
         self.built = True
 
     def call(self, inputs, **kwargs):
-        inputs = tf.reshape(inputs, (-1, self.input_caps, 1, self.input_caps_dims))  # (b, c_in, 1, d)
-        output = tf.reduce_sum(inputs * self.w, axis=-3)  # (b, c, d)
-        return squash(output, axis=tf.constant([-1]))
+        inputs = tf.reshape(inputs, (-1, 1, self.input_caps, self.input_caps_dims))  # (b, 1, c_in, d)
+        output = tf.reduce_sum(inputs * self.w, axis=-2)  # (b, c, 1, d)
+        return squash(output, axis=-1)

@@ -90,9 +90,7 @@ if __name__ == '__main__':
         model.fit(x_train, [y_train, x_train],
                   batch_size=50,
                   epochs=5,
-                  validation_split=0.1,
-                  use_multiprocessing=True,
-                  workers=2,
+                  validation_data=(x_test, (y_test, x_test)),
                   callbacks=[checkpoint])
 
     if mode == "test":

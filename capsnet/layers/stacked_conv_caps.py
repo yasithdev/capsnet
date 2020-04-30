@@ -9,13 +9,12 @@ from capsnet.nn import softmax, squash
         tf.TensorSpec(shape=(None, None, None, None, None, None), dtype=tf.float32),
 ))
 def routing_step(_logits, _pre_activation):
-    # softmax of logits over 3D space (such that their sum is 1)
-    _prob = softmax(_logits, axis=tf.constant([1, 2, 3]))  # shape: (b,p,q,r,s,1)
-    # calculate activation based on _prob
-    _activation = tf.reduce_sum(_prob * _pre_activation, axis=-2, keepdims=True)  # shape: (b,p,q,r,1,n)
-    # return _activation  # temporary hack to get the gradients flowing
-    # squash over 3D space and return
-    return squash(_activation, axis=tf.constant([-1]))  # shape: (b,p,q,r,1,n)
+    # softmax of logits over input capsules (such that their contribution sums up to 1)
+    _prob = softmax(_logits, axis=tf.constant([1, 2, 4]))  # shape: (b,p,q,s,r,1)
+    # calculate pre_activation weighted by _prob
+    _pre_activation = tf.reduce_sum(_prob * _pre_activation, axis=-3, keepdims=True)  # shape: (b,p,q,1,r,n)
+    # returning without non-linearity for now
+    return _pre_activation
 
 
 @tf.function(input_signature=(
@@ -25,9 +24,10 @@ def routing_step(_logits, _pre_activation):
 ))
 def routing_loop(_i, _logits, _pre_activation):
     # step 1: find the activation from logits
-    _activation = routing_step(_logits, _pre_activation)  # shape: (b,p,q,r,1,n)
-    # step 2: find the agreement (dot product) between pre_activation (b,p,q,r,s,n) and activation (b,p,q,r,1,n), across dim_caps
-    _agreement = tf.reduce_sum(_pre_activation * _activation, axis=-1, keepdims=True)  # shape: (b,p,q,r,s,1)
+    _activation = routing_step(_logits, _pre_activation)  # shape: (b,p,q,1,r,n)
+    _activation = squash(_activation, axis=-1)  # shape: (b,p,q,1,r,n)
+    # step 2: find the agreement (dot product) between pre_activation (b,p,q,s,r,n) and activation (b,p,q,1,r,n), across dim_caps
+    _agreement = tf.reduce_sum(_pre_activation * _activation, axis=-1, keepdims=True)  # shape: (b,p,q,s,r,1)
     # update routing weight
     _logits = _logits + _agreement
     # return updated variables
@@ -72,6 +72,7 @@ class StackedConvCaps(k.layers.Layer):
         self.conv_layer = k.layers.Conv3D(
             filters=self.filters * self.filter_dims,
             kernel_size=(*self.kernel_size, self.input_filter_dims),
+            kernel_initializer=k.initializers.TruncatedNormal(stddev=0.5),
             strides=(*self.strides, self.input_filter_dims),
             padding=self.padding
         )
@@ -86,12 +87,10 @@ class StackedConvCaps(k.layers.Layer):
         initial_activation = self.conv_layer(inputs)  # shape: (b,p,q,s,r * n)
         # reshape into (b,p,q,s,r,n)
         initial_activation = tf.reshape(initial_activation, shape=(-1, *initial_activation.shape[1:4], self.filters, self.filter_dims))
-        # transpose into (b,p,q,r,s,n)
-        initial_activation = tf.transpose(initial_activation, perm=(0, 1, 2, 4, 3, 5))
         # get activation by dynamic routing
-        activation = self.dynamic_routing(initial_activation)  # shape: (b,p,q,r,1,n)
+        activation = self.dynamic_routing(initial_activation)  # shape: (b,p,q,1,r,n)
         # return activation in (b,p,q,r,n) form
-        return tf.squeeze(activation, axis=-2)
+        return tf.squeeze(activation, axis=-3)
 
     def dynamic_routing(self, initial_activation):
         """
@@ -101,18 +100,19 @@ class StackedConvCaps(k.layers.Layer):
         batch_size      (b),
         rows            (p),
         cols            (q),
-        filter_dims     (n),
-        filters         (r),
         input_filters   (s),
+        filters         (r),
+        filter_dims     (n),
 
-        :param initial_activation (b,p,q,r,s,n)
-        :return: activation (b,p,q,r,1,n)
+        :param initial_activation (b,p,q,s,r,n)
+        :return: activation (b,p,q,1,r,n)
         """
         # define dimensions
         b = tf.shape(initial_activation)[0]
-        [p, q, r, s, _] = initial_activation.shape[1:]
+        [p, q, s, r, _] = initial_activation.shape[1:]
+
         # define variables
-        initial_logits = tf.zeros(shape=(b, p, q, r, s, 1))  # shape: (b,p,q,r,s,1)
+        initial_logits = tf.zeros(shape=(b, p, q, s, r, 1))  # shape: (b,p,q,s,r,1)
         # update logits at each routing iteration
         [_, final_logits, _] = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(
             loop_vars=[tf.constant(0), initial_logits, initial_activation],
@@ -120,4 +120,4 @@ class StackedConvCaps(k.layers.Layer):
             body=routing_loop
         ))
         # return activation from the updated logits
-        return routing_step(final_logits, initial_activation)  # shape: (b,p,q,r,1,n)
+        return routing_step(final_logits, initial_activation)  # shape: (b,p,q,1,r,n)

@@ -64,7 +64,7 @@ class DenseCaps(k.layers.Layer):
             name='w',
             shape=(1, self.input_caps, self.caps, self.caps_dims, self.input_caps_dims),
             dtype=tf.float32,
-            initializer=k.initializers.RandomNormal(stddev=0.1)
+            initializer=k.initializers.TruncatedNormal()
         )
         self.built = True
 
@@ -78,7 +78,7 @@ class DenseCaps(k.layers.Layer):
         # dynamic routing
         activation = self.dynamic_routing(initial_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
         # reshape to (None, num_caps, dim_caps) and return
-        return tf.reshape(activation, shape=(-1, self.caps, self.caps_dims))
+        return tf.squeeze(activation, axis=[1, 4])
 
     def dynamic_routing(self, initial_activation):
         """
