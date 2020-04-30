@@ -73,7 +73,7 @@ if __name__ == '__main__':
 
     # configure model and print summary
     model = get_model(name=model_name, input_shape=x_train.shape[1:], num_classes=NUM_CLASSES)
-    model.compile(optimizer=k.optimizers.Adam(learning_rate=0.01),
+    model.compile(optimizer=k.optimizers.Adam(learning_rate=0.0005),
                   loss=[losses.margin_loss, 'mse'],
                   loss_weights=[1, 5e-3],
                   metrics={'pred': 'acc'})
