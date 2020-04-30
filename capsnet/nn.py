@@ -12,7 +12,7 @@ def norm(data):
     return tf.sqrt(tf.maximum(squared_sum, e))
 
 
-def squash(data, axis):
+def squash(data, axis=-1):
     """
     Normalize to unit vectors
     :param data: Tensor with rank >= 2

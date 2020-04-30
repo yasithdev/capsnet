@@ -2,8 +2,8 @@ import tensorflow as tf
 from tensorflow import keras as k
 
 
-class ConvCaps(k.layers.Layer):
-    def __init__(self, filters, filter_dims, kernel_size, strides=(1, 1), padding='valid', activation=None, **kwargs):
+class ConvCaps2D(k.layers.Layer):
+    def __init__(self, filters, filter_dims, kernel_size, strides=(1, 1), padding='valid', **kwargs):
         super().__init__(**kwargs)
         self.filters = filters
         self.filter_dims = filter_dims
@@ -12,8 +12,7 @@ class ConvCaps(k.layers.Layer):
             kernel_size=kernel_size,
             kernel_initializer=k.initializers.TruncatedNormal(),
             strides=strides,
-            padding=padding,
-            activation=activation)
+            padding=padding)
 
     def get_config(self):
         config = super().get_config().copy()

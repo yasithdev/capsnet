@@ -5,7 +5,8 @@ from tensorflow import keras as k
 from tensorflow.keras import layers as kl
 
 from capsnet import nn, layers
-from capsnet.layers import ConvCaps, DenseCaps
+from capsnet.layers import ConvCaps2D, DenseCaps
+from capsnet.nn import squash
 
 
 def get_model(name, input_shape, num_classes) -> k.Model:
@@ -20,8 +21,10 @@ def get_model(name, input_shape, num_classes) -> k.Model:
 def original_model(name, input_shape, num_classes) -> k.Model:
     inl = kl.Input(shape=input_shape, name='input')
     nl = kl.Conv2D(filters=256, kernel_size=(9, 9), strides=(1, 1), activation='relu', name='conv')(inl)
-    nl = ConvCaps(filters=32, filter_dims=8, kernel_size=(9, 9), strides=(2, 2), activation='relu', name='conv_caps_2d')(nl)
+    nl = ConvCaps2D(filters=32, filter_dims=8, kernel_size=(9, 9), strides=(2, 2), name='conv_caps_2d')(nl)
+    nl = kl.Lambda(squash)(nl)
     nl = DenseCaps(caps=num_classes, caps_dims=16, routing_iter=3, name='dense_caps')(nl)
+    nl = kl.Lambda(squash)(nl)
     pred = kl.Lambda(nn.norm, name='pred')(nl)
     recon = fully_connected_decoder(input_shape)(nl)
     return k.Model(inputs=inl, outputs=[pred, recon], name=name)
@@ -41,12 +44,11 @@ def fully_connected_decoder(target_shape):
 
 def residual_caps_block(filters, filter_dims, kernel_size, strides, routing_iter):
     def block(il):
-        # 2D convolution without dynamic routing
-        l1 = layers.ConvCaps(filters, filter_dims, kernel_size, strides, padding='same')(il)
-        # 3D convolution block with dynamic routing
-        l2 = layers.StackedConvCaps(filters, filter_dims, routing_iter, kernel_size, (1, 1), padding='same')(l1)
-        # add shortcut connection and return
-        return l2 + l1
+        l1 = layers.ConvCaps2D(filters, filter_dims, kernel_size, strides, padding='same')(il)
+        l2 = layers.ConvCaps3D(filters, filter_dims, routing_iter, kernel_size, strides, padding='same')(il)
+        l3 = kl.Concatenate(axis=-2)([l1, l2])
+        l4 = kl.Lambda(squash)(l3)
+        return l4
 
     return block
 
@@ -54,7 +56,7 @@ def residual_caps_block(filters, filter_dims, kernel_size, strides, routing_iter
 def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     inl = k.layers.Input(shape=input_shape, name='input')
     # convert to capsule domain
-    l1 = layers.ConvCaps(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), padding='same')(inl)
+    l1 = layers.ConvCaps2D(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), padding='same')(inl)
     # residual capsule block 1
     l2 = residual_caps_block(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), routing_iter=1)(l1)
     # residual capsule block 2

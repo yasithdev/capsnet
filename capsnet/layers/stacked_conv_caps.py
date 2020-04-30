@@ -33,7 +33,7 @@ def routing_loop(_i, _logits, _pre_activation):
     return _i + 1, _logits, _pre_activation
 
 
-class StackedConvCaps(k.layers.Layer):
+class ConvCaps3D(k.layers.Layer):
     def __init__(self, filters, filter_dims, routing_iter, kernel_size, strides, padding='valid', **kwargs):
         super().__init__(**kwargs)
         self.filters = filters
