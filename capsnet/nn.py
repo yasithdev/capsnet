@@ -7,7 +7,7 @@ def softmax(_logits, axis):
 
 @tf.function(input_signature=(tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),))
 def norm(data):
-    e = 1e-24
+    e = 1e-10
     squared_sum = tf.reduce_sum(tf.square(data), axis=-1)
     return tf.sqrt(tf.maximum(squared_sum, e))
 
@@ -19,7 +19,7 @@ def squash(data, axis=-1):
     :param axis: axis over which to squash
     :return:
     """
-    e = 1e-24
+    e = 1e-10
     squared_sum = tf.reduce_sum(tf.square(data), axis=axis, keepdims=True)
     vec_norm = tf.sqrt(tf.maximum(squared_sum, e))
     return data * squared_sum / (1 + squared_sum) / vec_norm

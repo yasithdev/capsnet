@@ -6,7 +6,6 @@ from tensorflow.keras import layers as kl
 
 from capsnet import nn, layers
 from capsnet.layers import ConvCaps2D, DenseCaps
-from capsnet.nn import squash
 
 
 def get_model(name, input_shape, num_classes) -> k.Model:
@@ -24,10 +23,10 @@ def original_model(name, input_shape, num_classes) -> k.Model:
     nl = kl.Conv2D(filters=256, kernel_size=(9, 9), strides=(1, 1), activation='relu', name='conv')(inl)
     # convert to capsule domain
     nl = ConvCaps2D(filters=32, filter_dims=8, kernel_size=(9, 9), strides=(2, 2), name='conv_caps_2d')(nl)
-    nl = kl.Lambda(squash)(nl)
+    nl = kl.Lambda(nn.squash)(nl)
     # dense layer for dynamic routing
     nl = DenseCaps(caps=num_classes, caps_dims=16, routing_iter=3, name='dense_caps')(nl)
-    nl = kl.Lambda(squash)(nl)
+    nl = kl.Lambda(nn.squash)(nl)
     pred = kl.Lambda(nn.norm, name='pred')(nl)
     recon = fully_connected_decoder(input_shape)(nl)
     return k.Model(inputs=inl, outputs=[pred, recon], name=name)
@@ -45,16 +44,6 @@ def fully_connected_decoder(target_shape):
     return decoder
 
 
-def dense_caps_block(filters, filter_dims, kernel_size, strides, routing_iter):
-    def block(il):
-        l0 = layers.ConvCaps2D(filters, filter_dims, kernel_size, strides, padding='same')(il)
-        l1 = layers.ConvCaps3D(filters, filter_dims, routing_iter, kernel_size, (1, 1), padding='same')(l0)
-        l2 = kl.Concatenate(axis=-1)([l0, l1])
-        return kl.Lambda(squash)(l2)
-
-    return block
-
-
 def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     inl = k.layers.Input(shape=input_shape, name='input')
     kernel_size = (3, 3)
@@ -69,6 +58,16 @@ def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     pred = k.layers.Lambda(nn.norm, name='pred')(nl)
     recon = conv_decoder(target_shape=input_shape)(nl)
     return k.models.Model(inputs=inl, outputs=[pred, recon], name=name)
+
+
+def dense_caps_block(filters, filter_dims, kernel_size, strides, routing_iter):
+    def block(il):
+        l0 = layers.ConvCaps2D(filters, filter_dims, kernel_size, strides, padding='same')(il)
+        l1 = layers.ConvCaps3D(filters, filter_dims, routing_iter, kernel_size, (1, 1), padding='same')(l0)
+        l2 = kl.Concatenate(axis=-1)([l0, l1])
+        return kl.Lambda(nn.squash)(l2)
+
+    return block
 
 
 def conv_decoder(target_shape):
