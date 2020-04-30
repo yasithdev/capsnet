@@ -20,9 +20,12 @@ def get_model(name, input_shape, num_classes) -> k.Model:
 
 def original_model(name, input_shape, num_classes) -> k.Model:
     inl = kl.Input(shape=input_shape, name='input')
+    # relu convolution for feature extraction
     nl = kl.Conv2D(filters=256, kernel_size=(9, 9), strides=(1, 1), activation='relu', name='conv')(inl)
+    # convert to capsule domain
     nl = ConvCaps2D(filters=32, filter_dims=8, kernel_size=(9, 9), strides=(2, 2), name='conv_caps_2d')(nl)
     nl = kl.Lambda(squash)(nl)
+    # dense layer for dynamic routing
     nl = DenseCaps(caps=num_classes, caps_dims=16, routing_iter=3, name='dense_caps')(nl)
     nl = kl.Lambda(squash)(nl)
     pred = kl.Lambda(nn.norm, name='pred')(nl)
@@ -42,29 +45,27 @@ def fully_connected_decoder(target_shape):
     return decoder
 
 
-def residual_caps_block(filters, filter_dims, kernel_size, strides, routing_iter):
+def dense_caps_block(filters, filter_dims, kernel_size, strides, routing_iter):
     def block(il):
-        l1 = layers.ConvCaps2D(filters, filter_dims, kernel_size, strides, padding='same')(il)
-        l2 = layers.ConvCaps3D(filters, filter_dims, routing_iter, kernel_size, strides, padding='same')(il)
-        l3 = kl.Concatenate(axis=-2)([l1, l2])
-        l4 = kl.Lambda(squash)(l3)
-        return l4
+        l0 = layers.ConvCaps2D(filters, filter_dims, kernel_size, strides, padding='same')(il)
+        l1 = layers.ConvCaps3D(filters, filter_dims, routing_iter, kernel_size, (1, 1), padding='same')(l0)
+        l2 = kl.Concatenate(axis=-1)([l0, l1])
+        return kl.Lambda(squash)(l2)
 
     return block
 
 
 def deep_caps_model(name, input_shape, num_classes) -> k.Model:
     inl = k.layers.Input(shape=input_shape, name='input')
-    # convert to capsule domain
-    l1 = layers.ConvCaps2D(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), padding='same')(inl)
+    kernel_size = (3, 3)
+    # relu convolution for feature extraction
+    nl = kl.Conv2D(filters=128, kernel_size=kernel_size, strides=(1, 1), activation='relu', padding='same', name='conv')(inl)
     # residual capsule block 1
-    l2 = residual_caps_block(filters=32, filter_dims=8, kernel_size=(3, 3), strides=(2, 2), routing_iter=1)(l1)
+    l2 = dense_caps_block(filters=16, filter_dims=8, kernel_size=kernel_size, strides=(2, 2), routing_iter=3)(nl)
     # residual capsule block 2
-    l3 = residual_caps_block(filters=32, filter_dims=16, kernel_size=(3, 3), strides=(2, 2), routing_iter=2)(l2)
-    # residual capsule block 2
-    l4 = residual_caps_block(filters=32, filter_dims=16, kernel_size=(3, 3), strides=(2, 2), routing_iter=3)(l3)
+    l3 = dense_caps_block(filters=16, filter_dims=16, kernel_size=kernel_size, strides=(2, 2), routing_iter=3)(l2)
     # flatten capsules
-    nl = layers.FlattenCaps(caps=num_classes, name='cap1_flatten')(l4)
+    nl = layers.FlattenCaps(caps=num_classes, name='cap1_flatten')(l3)
     pred = k.layers.Lambda(nn.norm, name='pred')(nl)
     recon = conv_decoder(target_shape=input_shape)(nl)
     return k.models.Model(inputs=inl, outputs=[pred, recon], name=name)
