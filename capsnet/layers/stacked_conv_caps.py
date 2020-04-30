@@ -10,11 +10,10 @@ from capsnet.nn import softmax, squash
 ))
 def routing_step(_logits, _pre_activation):
     # softmax of logits over input capsules (such that their contribution sums up to 1)
-    _prob = softmax(_logits, axis=tf.constant([1, 2, 4]))  # shape: (b,p,q,s,r,1)
+    _prob = softmax(_logits, axis=(1, 2, 4))  # shape: (b,p,q,s,r,1)
     # calculate pre_activation weighted by _prob
     _pre_activation = tf.reduce_sum(_prob * _pre_activation, axis=-3, keepdims=True)  # shape: (b,p,q,1,r,n)
-    # returning without non-linearity
-    return squash(_pre_activation, axis=-1)
+    return _pre_activation
 
 
 @tf.function(input_signature=(
@@ -25,6 +24,7 @@ def routing_step(_logits, _pre_activation):
 def routing_loop(_i, _logits, _pre_activation):
     # step 1: find the activation from logits
     _activation = routing_step(_logits, _pre_activation)  # shape: (b,p,q,1,r,n)
+    _activation = squash(_activation, axis=-1)
     # step 2: find the agreement (dot product) between pre_activation (b,p,q,s,r,n) and activation (b,p,q,1,r,n), across dim_caps
     _agreement = tf.reduce_sum(_pre_activation * _activation, axis=-1, keepdims=True)  # shape: (b,p,q,s,r,1)
     # update routing weight

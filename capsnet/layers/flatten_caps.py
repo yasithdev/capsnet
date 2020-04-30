@@ -1,8 +1,6 @@
 import tensorflow as tf
 from tensorflow import keras as k
 
-from capsnet.nn import squash
-
 
 class FlattenCaps(k.layers.Layer):
     def __init__(self, caps, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
@@ -36,5 +34,5 @@ class FlattenCaps(k.layers.Layer):
 
     def call(self, inputs, **kwargs):
         inputs = tf.reshape(inputs, (-1, 1, self.input_caps, self.input_caps_dims))  # (b, 1, c_in, d)
-        output = tf.reduce_sum(inputs * self.w, axis=-2)  # (b, c, 1, d)
-        return squash(output, axis=-1)
+        output = tf.reduce_sum(inputs * self.w, axis=-2)  # (b, c, c_in, d) -> (b, c, d)
+        return output  # (b, c, d)

@@ -13,17 +13,18 @@ def routing_step(_logits, _pre_activation):
     :return:
     """
     # softmax of logits over all capsules (such that their sum is 1)
-    _prob = softmax(_logits, axis=tf.constant([2]))  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
-    # calculate activation based on _prob
-    _activation = tf.reduce_sum(_prob * _pre_activation, axis=1, keepdims=True)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
-    # squash over dim_caps and return
-    return squash(_activation, axis=tf.constant([-2]))  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+    _prob = softmax(_logits, axis=2)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
+    # calculate _pre_activation based on _prob
+    _pre_activation = tf.reduce_sum(_prob * _pre_activation, axis=1, keepdims=True)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+    return _pre_activation
 
 
 @tf.function
 def routing_loop(_i, _logits, _pre_activation):
     # step 1: find the activation from logits
     _activation = routing_step(_logits, _pre_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+    # step 2: apply squash function over dim_caps
+    _activation = squash(_activation, axis=-2)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
     # step 2: find the agreement (dot product) between pre_activation and activation, across dim_caps
     _agreement = tf.reduce_sum(_pre_activation * _activation, axis=-2, keepdims=True)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
     # step 3: update routing weights based on agreement
@@ -78,7 +79,7 @@ class DenseCaps(k.layers.Layer):
         # dynamic routing
         activation = self.dynamic_routing(initial_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
         # reshape to (None, num_caps, dim_caps) and return
-        return tf.squeeze(activation, axis=[1, 4])
+        return tf.squeeze(activation, axis=[1, 4])  # shape: (batch_size, num_caps, dim_caps)
 
     def dynamic_routing(self, initial_activation):
         """
@@ -100,4 +101,4 @@ class DenseCaps(k.layers.Layer):
             body=routing_loop
         ))
         # return activation from the updated logits
-        return routing_step(final_logits, initial_activation)
+        return routing_step(final_logits, initial_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
