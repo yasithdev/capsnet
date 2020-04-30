@@ -42,12 +42,12 @@ def fully_connected_decoder(target_shape):
 def residual_caps_block(filters, filter_dims, kernel_size, strides, routing_iter):
     def block(il):
         # 3D convolution with dynamic routing
-        l3 = layers.StackedConvCaps(filters, filter_dims, routing_iter, kernel_size, (1, 1), padding='same')(il)
-        # 2D convolution without dynamic routing (shortcut path)
-        l1 = tf.reshape(il, (-1, il.shape[1], il.shape[2], il.shape[3] * il.shape[4]))
-        l2 = layers.ConvCaps(filters, filter_dims, kernel_size, strides, padding='same', activation='relu')(l1)
-        # add l1 to l2 and return
-        return l3 + l2
+        l1 = layers.StackedConvCaps(filters, filter_dims, routing_iter, kernel_size, strides, padding='same')(il)
+        l2 = layers.StackedConvCaps(filters, filter_dims, 0, kernel_size, (1, 1), padding='same')(l1)
+        # 2D convolution without dynamic routing (shortcut)
+        shortcut = tf.reshape(il, (-1, il.shape[1], il.shape[2], tf.reduce_prod(il.shape[3:])))
+        shortcut = layers.ConvCaps(filters, filter_dims, kernel_size, strides, padding='same', activation='relu')(shortcut)
+        return l2 + shortcut
 
     return block
 
