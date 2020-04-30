@@ -89,7 +89,7 @@ if __name__ == '__main__':
         checkpoint = k.callbacks.ModelCheckpoint(filepath, save_best_only=True)
         model.fit(x_train, [y_train, x_train],
                   batch_size=50,
-                  epochs=5,
+                  epochs=100,
                   validation_data=(x_test, (y_test, x_test)),
                   callbacks=[checkpoint])
 

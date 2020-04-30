@@ -26,7 +26,8 @@ class ConvCaps(k.layers.Layer):
         return config
 
     def call(self, inputs, **kwargs):
-        result = self.conv_layer(inputs)
+        result = tf.reshape(inputs, (-1, inputs.shape[1], inputs.shape[2], tf.reduce_prod(inputs.shape[3:])))
+        result = self.conv_layer(result)
         result = tf.reshape(result, shape=(-1, *result.shape[1:3], self.filters, self.filter_dims))
         activation = squash(result, axis=tf.constant([-1]))
         return activation

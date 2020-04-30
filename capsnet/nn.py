@@ -22,7 +22,7 @@ def squash(data, axis):
     e = 1e-24
     squared_sum = tf.reduce_sum(tf.square(data), axis=axis, keepdims=True)
     vec_norm = tf.sqrt(tf.maximum(squared_sum, e))
-    return data * tf.square(vec_norm) / (1 + tf.square(vec_norm)) / vec_norm
+    return data * squared_sum / (1 + squared_sum) / vec_norm
 
 
 @tf.function(input_signature=(tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),))

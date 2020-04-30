@@ -13,7 +13,7 @@ def routing_step(_logits, _pre_activation):
     _prob = softmax(_logits, axis=tf.constant([1, 2, 4]))  # shape: (b,p,q,s,r,1)
     # calculate pre_activation weighted by _prob
     _pre_activation = tf.reduce_sum(_prob * _pre_activation, axis=-3, keepdims=True)  # shape: (b,p,q,1,r,n)
-    # squash and return
+    # returning without non-linearity
     return squash(_pre_activation, axis=-1)
 
 
