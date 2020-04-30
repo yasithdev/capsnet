@@ -24,7 +24,7 @@ def routing_loop(_i, _logits, _pre_activation):
     # step 1: find the activation from logits
     _activation = routing_step(_logits, _pre_activation)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
     # step 2: apply squash function over dim_caps
-    # _activation = squash(_activation, axis=-2)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
+    _activation = squash(_activation, axis=-2)  # shape: (batch_size, 1, num_caps, dim_caps, 1)
     # step 2: find the agreement (dot product) between pre_activation and activation, across dim_caps
     _agreement = tf.reduce_sum(_pre_activation * _activation, axis=-2, keepdims=True)  # shape: (batch_size, p_num_caps, num_caps, 1, 1)
     # step 3: update routing weights based on agreement
