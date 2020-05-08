@@ -3,6 +3,8 @@
 This repository provides Capsule Layer Implementations according to the original paper.
 Working in TensorFlow 2.x.
 
+Configured to be installable as a pip package
+
 # Files
 * capsnet.py - Capsule Layer implementations usable to create your own models
 * main.py - Code to train and evaluate the MNIST capsule network in the original paper
