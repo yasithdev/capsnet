@@ -7,18 +7,28 @@ class ConvCaps2D(k.layers.Layer):
         super().__init__(**kwargs)
         self.filters = filters
         self.filter_dims = filter_dims
+        self.kernel_size = kernel_size
+        self.strides = strides
+        self.padding = padding
+        self.conv_layer = ...  # initialize at build()
+    
+    def build(self, input_shape):
         self.conv_layer = k.layers.Conv2D(
             filters=self.filters * self.filter_dims,
-            kernel_size=kernel_size,
-            kernel_initializer=k.initializers.TruncatedNormal(),
-            strides=strides,
-            padding=padding)
+            kernel_size=self.kernel_size,
+            strides=self.strides,
+            activation='linear',
+            groups=input.shape[-1] // self.filter_dims,  # capsule-wise isolated convolution
+            padding=self.padding)
 
     def get_config(self):
         config = super().get_config().copy()
         config.update({
             'filters': self.filters,
-            'filter_dims': self.filter_dims
+            'filter_dims': self.filter_dims,
+            'kernel_size': self.kernel_size,
+            'strides': self.strides,
+            'padding': self.padding
         })
         return config
 
