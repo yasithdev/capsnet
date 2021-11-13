@@ -1,16 +1,17 @@
 # CapsNet
 
-This repository provides Capsule Layer Implementations according to the original paper.
-Working in TensorFlow 2.x.
+This repository provides Capsule Layer Implementations according to the original paper. Working in TensorFlow 2.x.
 
 Configured to be installable as a pip package
 
 # Files
+
 * capsnet.py - Capsule Layer implementations usable to create your own models
 * main.py - Code to train and evaluate the MNIST capsule network in the original paper
 * best_weights.hdf5 - Pre-trained weights for the MNIST capsule network in main.py
 
 ## MNIST Capsule Network
+
 ```
 __________________________________________________________________________________________________
 Layer (type)                    Output Shape         Param #     Connected to                     
@@ -44,6 +45,7 @@ ________________________________________________________________________________
 ```
 
 # Test Results
+
 ```
 __________________________________________________________________________________________________
 10000/10000 [==============================] - 31s 3ms/sample - loss: 0.0010 - margin_loss: 8.3830e-04 - reconstruction_loss: 0.0391 - margin_accuracy: 0.9919
