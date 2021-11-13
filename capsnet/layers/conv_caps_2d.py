@@ -18,7 +18,7 @@ class ConvCaps2D(k.layers.Layer):
             kernel_size=self.kernel_size,
             strides=self.strides,
             activation='linear',
-            groups=input.shape[-1] // self.filter_dims,  # capsule-wise isolated convolution
+            groups=input_shape[-1] // self.filter_dims,  # capsule-wise isolated convolution
             padding=self.padding)
 
     def get_config(self):
