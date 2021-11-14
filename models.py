@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import sys
 
 import tensorflow as tf
 import tensorflow.keras as k
@@ -14,7 +15,7 @@ def get_model(name, input_shape, num_classes) -> k.Model:
   elif name == "deepcaps":
     return deep_caps_model(name, input_shape, num_classes)
   else:
-    exit(1)
+    sys.exit(1)
 
 
 def original_model(name, input_shape, num_classes) -> k.Model:
@@ -34,7 +35,7 @@ def original_model(name, input_shape, num_classes) -> k.Model:
 
 def fully_connected_decoder(target_shape):
   def decoder(input_tensor):
-    nl = kl.Lambda(nn.mask_cid, name="dc_masking")(input_tensor)
+    nl = nn.MaskCID(name="dc_masking")(input_tensor)
     nl = kl.Dense(512, activation='relu', name="dc_dense_1")(nl)
     nl = kl.Dense(1024, activation='relu', name="dc_dense_2")(nl)
     nl = kl.Dense(tf.reduce_prod(target_shape), activation='sigmoid', name="dc_dense_3")(nl)
@@ -78,7 +79,7 @@ def conv_decoder(target_shape):
   W_S = W // (2 ** N)
 
   def decoder(input_tensor):
-    nl = kl.Lambda(nn.mask_cid, name="dc_masking")(input_tensor)
+    nl = nn.MaskCID(name="dc_masking")(input_tensor)
     nl = kl.Dense(W_S * W_S * D, name="dc_dense")(nl)
     nl = kl.BatchNormalization(momentum=0.8, name="dc_batch_norm")(nl)
     nl = kl.Reshape((W_S, W_S, D), name="dc_reshape")(nl)

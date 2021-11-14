@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow.keras as k
 
 
 def softmax(_logits, axis):
@@ -25,31 +26,31 @@ def squash(data, axis=-1):
   return squared_sum / (1 + squared_sum) * data / vec_norm
 
 
-@tf.function(input_signature=(tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),))
-def mask(inputs):
-  """
-  Mask data from all capsules except the most activated one, for each instance
-  :param inputs: shape: (None, num_caps, dim_caps)
-  :return:
-  """
-  norm_ = norm(inputs)  # shape: (None, num_caps)
-  argmax = tf.argmax(norm_, axis=-1)  # shape: (None, )
-  mask_ = tf.expand_dims(tf.one_hot(argmax, depth=norm_.shape[-1]), axis=-1)  # shape: (None, num_caps, 1)
-  masked_input = tf.multiply(inputs, mask_)  # shape: (None, num_caps, dim_caps)
-  return masked_input
+class Mask(k.layers.Layer):
+
+  def __init__(self, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
+    super(Mask, self).__init__(trainable, name, dtype, dynamic, **kwargs)
+
+  def call(self, inputs, *args, **kwargs):  # input_shape: (None, num_caps, dim_caps)
+    # calculate capsule norms
+    norms = norm(inputs)  # shape: (None, num_caps)
+    # find capsule indices with largest norms
+    indices = tf.argmax(norms, axis=-1, output_type=tf.int32)  # shape: (None, )
+    # create a mask to apply to input
+    mask = tf.expand_dims(tf.one_hot(indices, depth=norms.shape[-1]), axis=-1)  # shape: (None, num_caps, 1)
+    # apply mask to input
+    return tf.multiply(inputs, mask)  # shape: (None, num_caps, dim_caps)
 
 
-@tf.function(input_signature=(tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),))
-def mask_cid(inputs):
-  """
-  Select most activated capsule from each instance and return it
-  :param inputs: shape: (None, num_caps, dim_caps)
-  :return:
-  """
-  norm_ = norm(inputs)  # shape: (None, num_caps)
-  # build index of elements to collect
-  i = tf.range(start=0, limit=tf.shape(inputs)[0], delta=1)  # shape: (None, )
-  j = tf.argmax(norm_, axis=-1)  # shape: (None, )
-  ij = tf.stack([i, tf.cast(j, tf.int32)], axis=1)
-  # gather from index and return
-  return tf.gather_nd(inputs, ij)
+class MaskCID(k.layers.Layer):
+
+  def __init__(self, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
+    super(MaskCID, self).__init__(trainable, name, dtype, dynamic, **kwargs)
+
+  def call(self, inputs, *args, **kwargs):  # input_shape: (None, num_caps, dim_caps)
+    # calculate capsule norms
+    norms = norm(inputs)  # shape: (None, num_caps)
+    # find capsule indices with largest norms
+    indices = tf.argmax(norms, axis=-1, output_type=tf.int32)  # shape: (None, )
+    # gather largest capsules from input
+    return tf.gather(inputs, indices, axis=1, batch_dims=1)  # shape: (None, dim_caps)

@@ -54,8 +54,9 @@ if __name__ == '__main__':
 
   # load data
   if dataset_name == "mnist": dataset = mnist
-  if dataset_name == "cifar10": dataset = cifar10
-  if dataset_name == "cifar100": dataset = cifar100
+  elif dataset_name == "cifar10": dataset = cifar10
+  elif dataset_name == "cifar100": dataset = cifar100
+  else: sys.exit(1)
 
   (x_train, y_train), (x_test, y_test) = dataset.load_data()
   NUM_CLASSES = len(np.unique(y_train))
