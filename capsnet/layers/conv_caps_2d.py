@@ -34,7 +34,6 @@ class ConvCaps2D(k.layers.Layer):
     })
     return config
 
-  @tf.function(experimental_compile=True)
   def call(self, inputs, *args, **kwargs):
     result = tf.reshape(inputs, (-1, inputs.shape[1], inputs.shape[2], tf.reduce_prod(inputs.shape[3:])))
     result = self.conv_layer(result)

@@ -6,7 +6,7 @@ def softmax(_logits, axis):
   return tf.exp(_logits) / tf.reduce_sum(tf.exp(_logits), axis, keepdims=True)
 
 
-@tf.function(input_signature=(tf.TensorSpec(shape=(None, None, None), dtype=tf.float32),))
+@tf.function
 def norm(data):
   e = 1e-10
   squared_sum = tf.reduce_sum(tf.square(data), axis=-1)

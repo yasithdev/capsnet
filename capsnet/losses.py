@@ -1,7 +1,6 @@
 import tensorflow as tf
 
 
-@tf.function
 def margin_loss(_y_true, _y_pred, _m_p=0.9, _m_n=0.1, _lambda=0.5):
   """
   Loss Function
